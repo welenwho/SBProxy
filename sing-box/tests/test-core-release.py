@@ -41,7 +41,9 @@ class CoreReleaseTests(unittest.TestCase):
              patch.object(core, 'releases', return_value=[]), \
              patch.object(core, 'output') as out:
             core.resolve()
-            self.assertEqual(out.call_args.kwargs['revision'], REVISION + 1)
+            self.assertEqual(out.call_args.kwargs['revision'], 1)
+            self.assertEqual(out.call_args.kwargs['tag'], f'sbproxy-core-v{VERSION}')
+            self.assertNotIn('-r', out.call_args.kwargs['tag'])
             self.assertEqual(out.call_args.kwargs['build'], 'true')
 
     def test_prerelease_is_rejected(self):
@@ -50,26 +52,27 @@ class CoreReleaseTests(unittest.TestCase):
                 core.resolve()
 
     def test_retention_keeps_five_newest_and_pinned_release(self):
-        tags = [f'sbproxy-core-v1.14.{index}-r1' for index in range(8)]
+        tags = [f'sbproxy-core-v1.14.{index}' for index in range(3, 8)]
+        tags += [f'sbproxy-core-v1.14.{index}-r1' for index in range(3)]
         tags.append('sbproxy-core-v1.13.0-r9')
         tags.append('apk-packages-arm64')
         kept, stale, newest = core.select_retained(
             tags, protected=('sbproxy-core-v1.13.0-r9',))
-        self.assertEqual(newest, 'sbproxy-core-v1.14.7-r1')
+        self.assertEqual(newest, 'sbproxy-core-v1.14.7')
         self.assertEqual(kept[:5], [
-            'sbproxy-core-v1.14.7-r1',
-            'sbproxy-core-v1.14.6-r1',
-            'sbproxy-core-v1.14.5-r1',
-            'sbproxy-core-v1.14.4-r1',
-            'sbproxy-core-v1.14.3-r1',
+            'sbproxy-core-v1.14.7',
+            'sbproxy-core-v1.14.6',
+            'sbproxy-core-v1.14.5',
+            'sbproxy-core-v1.14.4',
+            'sbproxy-core-v1.14.3',
         ])
         self.assertIn('sbproxy-core-v1.13.0-r9', kept)
         self.assertIn('sbproxy-core-v1.14.0-r1', stale)
         self.assertNotIn('apk-packages-arm64', stale)
         higher_revision, _, _ = core.select_retained([
-            'sbproxy-core-v1.14.3-r2', 'sbproxy-core-v1.14.3-r10',
-            'sbproxy-core-v1.14.10-r1'])
-        self.assertEqual(higher_revision[0], 'sbproxy-core-v1.14.10-r1')
+            'sbproxy-core-v1.14.3', 'sbproxy-core-v1.14.3-r10',
+            'sbproxy-core-v1.14.10'])
+        self.assertEqual(higher_revision[0], 'sbproxy-core-v1.14.10')
 
     def test_release_workflow_publishes_latest_and_retains_five(self):
         workflow = (ROOT / '.github/workflows/Update-Sing-Box.yml').read_text()
@@ -77,6 +80,8 @@ class CoreReleaseTests(unittest.TestCase):
         self.assertIn('core-release.py retain', workflow)
         self.assertNotIn('--latest=false', workflow)
         self.assertIn('--latest', workflow)
+        self.assertIn('--title "SBProxy core $VERSION"', workflow)
+        self.assertNotIn('$VERSION-r$REVISION', workflow)
         self.assertIn("cron: '17 18 * * *'", queue)
         self.assertIn("cron: '47 6 * * *'", queue)
         self.assertNotIn("cron: '0 18 * * *'", queue)
@@ -116,6 +121,25 @@ class CoreReleaseTests(unittest.TestCase):
                                             f'TOPDIR={root}', f'ARCH={arch}', f'BUILD_VARIANT={variant}',
                                             'SBPROXY_CORE_SOURCE_BUILD=' + ('1' if force else '0'), 'show'],
                                            cwd=root, text=True)
+
+    def test_version_only_pin_uses_upstream_archive_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'include').mkdir()
+            (root / 'rules.mk').write_text('INCLUDE_DIR:=$(TOPDIR)/include\nBUILD_DIR:=$(TOPDIR)/build\n')
+            (root / 'include/package.mk').write_text('')
+            go = root / 'feeds/packages/lang/golang'
+            go.mkdir(parents=True)
+            (go / 'golang-package.mk').write_text('GO_ARCH_DEPENDS:=@aarch64||x86_64||mips\n')
+            shutil.copyfile(ROOT / 'sing-box/Makefile', root / 'Makefile')
+            (root / 'print.mk').write_text('show:\n\t@echo source=$(PKG_SOURCE) prebuilt=$(CORE_PREBUILT)\n')
+            (root / 'core-prebuilt.mk').write_text(
+                f'CORE_PIN_VERSION:={VERSION}\nCORE_SHA256_arm64:=' + 'a' * 64 + '\n')
+            values = subprocess.check_output(
+                ['make', '-s', '-f', 'Makefile', '-f', 'print.mk', f'TOPDIR={root}',
+                 'ARCH=aarch64', 'BUILD_VARIANT=full', 'show'], cwd=root, text=True)
+        self.assertIn(f'source=sing-box-{VERSION}-linux-arm64.tar.gz', values)
+        self.assertIn('prebuilt=' + 'a' * 64, values)
 
     def test_prebuilt_skips_go_dependency(self):
         for arch, archive_arch in [('aarch64', 'arm64'), ('x86_64', 'amd64')]:

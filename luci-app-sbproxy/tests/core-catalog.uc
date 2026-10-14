@@ -12,6 +12,12 @@ const digest = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const good = { name, browser_download_url: url, digest, size: 128, created_at: '2026-09-08' };
 const cases = [
 	[{ tag_name: tag, assets: [good] }, true],
+	[{ tag_name: 'sbproxy-core-v1.14.3', assets: [{
+		...good,
+		name: 'sing-box-1.14.3-arm64.apk',
+		browser_download_url: 'https://github.com/welenwho/packages/releases/download/sbproxy-core-v1.14.3/sing-box-1.14.3-arm64.apk'
+	}] }, true],
+	[{ tag_name: 'sbproxy-core-v1.14.3', assets: [good] }, false],
 	[{ tag_name: tag, draft: true, assets: [good] }, false],
 	[{ tag_name: tag, prerelease: true, assets: [good] }, false],
 	[{ tag_name: 'apk-packages-arm64', assets: [good] }, false],

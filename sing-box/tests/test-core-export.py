@@ -72,8 +72,10 @@ if [ "$FAILURE" = dynamic ]; then echo 'INTERP NEEDED'; else echo 'No dynamic de
                                     cwd=root, env=env, capture_output=True, text=True)
             if not failure:
                 self.assertTrue((output / 'core-amd64.json').is_file(), result.stdout + result.stderr)
-                with tarfile.open(output / 'sing-box-1.14.0-r2-linux-amd64.tar.gz') as archive:
-                    self.assertEqual(archive.extractfile('sing-box-1.14.0-r2-linux-amd64/LICENSE').read(), data)
+                with tarfile.open(output / 'sing-box-1.14.0-linux-amd64.tar.gz') as archive:
+                    self.assertEqual(archive.extractfile('sing-box-1.14.0-linux-amd64/LICENSE').read(), data)
+                self.assertTrue((output / 'sing-box-1.14.0-amd64.apk').is_file())
+                self.assertFalse((output / 'sing-box-1.14.0-r2-amd64.apk').exists())
             return result
 
     def test_export_after_sdk_source_cleanup(self):

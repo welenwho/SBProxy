@@ -146,7 +146,11 @@ mapfile -t package_dirs < <(ci_discover_packages)
 	for package_dir in "${package_dirs[@]}"; do
 		name="$(ci_package_name "$package_dir")"
 		[[ "$name" != luci-app-* ]] || continue
-		version="$(ci_package_version "$package_dir")"
+		if [[ "$name" == sing-box ]]; then
+			version="$(ci_make_value "$package_dir" PKG_VERSION)"
+		else
+			version="$(ci_package_version "$package_dir")"
+		fi
 		source_url="$(package_source_url "$package_dir")"
 		printf "| \`%s\` | \`%s\` | %s |\n" \
 			"$name" "$version" "$(source_label "$source_url")"

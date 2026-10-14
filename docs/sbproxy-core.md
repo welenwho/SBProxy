@@ -10,17 +10,19 @@
 未变化不会重复构建。也可手动运行该工作流。仅发布完整 SBProxy 核心，
 不增加 standard/minimal 配置。
 
-- Release：`sbproxy-core-v1.14.0-r2`（示例）。
+- Release：`sbproxy-core-v1.14.3`（示例）。发布名只用上游版本，不附加 `-rN`。
 - 架构：ARM64（ARMv8.0）和 AMD64（x86-64-v1）。
-- `sing-box-1.14.0-r2-linux-arm64.tar.gz`：供固件打包的预编译核心。
-- `sing-box-1.14.0-r2-arm64.apk`：供当前 ImmortalWrt APK 系统在线安装。
+- `sing-box-1.14.3-linux-arm64.tar.gz`：供固件打包的预编译核心。
+- `sing-box-1.14.3-arm64.apk`：供当前 ImmortalWrt APK 系统在线安装。
 - `core-manifest.json`、`SHA256SUMS`：架构、核心版本、源码提交、补丁、编译信息和校验值。
 - `sbproxy-core-build-source.tar.gz`：该版本的构建脚本与补丁快照；上游源码固定为清单中的 Git tag，Tailscale 依赖由该 tag 的 go.mod 确定。
 
-同一上游版本的补丁/构建变更递增 `rN`。已发布的 Release 不覆盖。两种架构都成功、
-核心功能及静态链接检查通过后才发布，并把该版本标为仓库 Latest。发布后只保留
-版本号最新的 5 个稳定核心 Release；当前固件锁定版本即使更旧也会保留。
-补丁无法应用时任务失败，不跳过补丁，也不推进固件版本。
+每个上游版本只发布一次，标签和标题都不带 `-rN`。已发布的 Release 不覆盖，
+也不再为同一版本追加修订号。2026-10 之前已经发布的 `sbproxy-core-v1.14.x-rN`
+标签保持不变，在线回滚仍可下载。两种架构都成功、核心功能及静态链接检查通过后
+才发布，并把该版本标为仓库 Latest。发布后只保留版本号最新的 5 个稳定核心
+Release；当前固件锁定版本即使更旧也会保留。补丁无法应用时任务失败，不跳过补丁，
+也不推进固件版本。
 
 ## 固件编译
 

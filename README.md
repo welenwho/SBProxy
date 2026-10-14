@@ -15,7 +15,7 @@
 | 软件包 | 版本 | 源码来源 |
 | --- | --- | --- |
 | `gecoosac` | `2.2.20251015-r1` | [welenwho/packages](https://github.com/welenwho/packages) |
-| `sing-box` | `1.14.2-r1` | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) |
+| `sing-box` | `1.14.2` | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) |
 
 ## 自动维护
 

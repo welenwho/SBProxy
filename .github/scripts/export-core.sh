@@ -14,7 +14,8 @@ revision="$6"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$revision" =~ ^[1-9][0-9]*$ ]]
 apk="$sdk/staging_dir/host/bin/apk"
 package="$apk_output/sing-box-$version-r$revision.apk"
-name="sing-box-$version-r$revision-linux-$arch"
+# The SDK package keeps OpenWrt's release number. Published names do not.
+name="sing-box-$version-linux-$arch"
 mkdir -p "$output/$name/release/config"
 extract="$(mktemp -d)"
 trap 'rm -rf -- "$extract"' EXIT
@@ -56,13 +57,13 @@ test -s "$output/$name/LICENSE"
 cp "$extract/version.txt" "$output/$name/BUILD_INFO"
 stage=package-and-manifest
 binary_sha="$(sha256sum "$binary" | cut -d' ' -f1)"
-jq -n --arg version "$version-r$revision" --arg arch "$arch" --arg sha "$binary_sha" \
+jq -n --arg version "$version" --arg arch "$arch" --arg sha "$binary_sha" \
     --arg source "$CORE_SOURCE_SHA" '{profile:"sbproxy",version:$version,arch:$arch,binary_sha256:$sha,source_sha:$source}' \
     > "$output/$name/SBP_BUILD_INFO"
 tar -C "$output" -czf "$output/$name.tar.gz" "$name"
-cp "$package" "$output/sing-box-$version-r$revision-$arch.apk"
+cp "$package" "$output/sing-box-$version-$arch.apk"
 apk_arch="$("$apk" adbdump "$package" | awk '/^  arch: / { print $2; exit }')"
-python3 .github/scripts/core-release.py export "$output" "$arch" "$version-r$revision" \
+python3 .github/scripts/core-release.py export "$output" "$arch" "$version" \
     "$apk_arch" "$binary_sha" "$extract/version.txt" \
     "$(sed -n 's/^PKG_HASH:=//p' sing-box/Makefile)" \
     "$(sed -n 's/^TAILSCALE_MODULE_VERSION:=//p' sing-box/Makefile)"

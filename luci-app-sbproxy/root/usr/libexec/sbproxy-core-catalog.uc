@@ -13,17 +13,18 @@ for (let release in (type(releases) === 'array' ? releases : [releases])) {
 	if (release.draft || release.prerelease)
 		continue;
 	const tag = release.tag_name || '';
-	const version = match(tag, /^sbproxy-core-v([0-9]+\.[0-9]+\.[0-9]+-r[1-9][0-9]*)$/);
+	const version = match(tag, /^sbproxy-core-v([0-9]+\.[0-9]+\.[0-9]+)(-r[1-9][0-9]*)?$/);
 	if (!version && !(legacy && tag === 'apk-packages-' + arch))
 		continue;
 	for (let asset in release.assets || []) {
 		let name = asset.name || '';
 		if (version) {
-			if (name !== `sing-box-${version[1]}-${arch}.apk`)
+			const package_version = version[1] + (version[2] || '');
+			if (name !== `sing-box-${package_version}-${arch}.apk`)
 				continue;
-			name = `sing-box-${version[1]}.apk`;
+			name = `sing-box-${package_version}.apk`;
 		}
-		const parsed = match(name, /^sing-box-([0-9]+)\.([0-9]+)\.([0-9]+)-r[1-9][0-9]*\.apk$/);
+		const parsed = match(name, /^sing-box-([0-9]+)\.([0-9]+)\.([0-9]+)(-r[1-9][0-9]*)?\.apk$/);
 		// 1.14 is the minimum supported SBProxy configuration schema.
 		if (!parsed || int(parsed[1]) < 1 || (int(parsed[1]) === 1 && int(parsed[2]) < 14))
 			continue;

@@ -85,7 +85,7 @@ start_operation() {
 	job_target="$2"
 	job_id="$3"
 	printf '%s\n' "$job_id" | grep -Eq '^[a-f0-9]{32}$' || fail invalid_target 'Invalid operation ID.'
-	printf '%s\n' "$job_target" | grep -Eq '^sing-box-[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+\.apk$' ||
+	core_package_name "$job_target" ||
 		fail invalid_target 'Invalid core package selection.'
 	exec 9>"$LOCK_FILE"
 	flock -n 9 || fail operation_in_progress 'Another core operation is already in progress.'
@@ -139,6 +139,32 @@ log() {
 package_version() {
 	apk query --installed --fields version sing-box 2>/dev/null |
 		sed -n 's/^Version:[[:space:]]*//p' | head -n 1
+}
+
+core_package_name() {
+	printf '%s\n' "$1" | grep -Eq \
+		'^sing-box-[0-9]+\.[0-9]+\.[0-9]+(-r[1-9][0-9]*)?\.apk$'
+}
+
+shown_version() {
+	case "$1" in
+	*-r[1-9]|*-r[1-9][0-9]|*-r[1-9][0-9][0-9])
+		printf '%s\n' "${1%-r*}"
+		;;
+	*)
+		printf '%s\n' "$1"
+		;;
+	esac
+}
+
+versions_match() {
+	expected="$1"
+	actual="$2"
+	[ "$actual" = "$expected" ] && return 0
+	case "$expected" in
+	*-r*) return 1 ;;
+	esac
+	[ "$actual" = "${expected}-r1" ]
 }
 
 package_arch() {
@@ -345,7 +371,7 @@ validate_apk() {
 	version="$(printf '%s\n' "$metadata" | awk '/^  version: / { sub(/^  version: /, ""); print; exit }')"
 	arch="$(printf '%s\n' "$metadata" | awk '/^  arch: / { sub(/^  arch: /, ""); print; exit }')"
 	[ "$name" = 'sing-box' ] || return 1
-	[ "$version" = "$expected_version" ] || return 1
+	versions_match "$expected_version" "$version" || return 1
 	validate_arch "$arch" || return 1
 
 	extract_dir="$work_dir/extract"
@@ -426,7 +452,7 @@ emit_status() {
 	emit release_tag ""
 	emit system_arch "$system_arch"
 	emit package_arch "$installed_arch"
-	emit package_version "$current_package"
+	emit package_version "$(shown_version "$current_package")"
 	emit version "$current_core"
 	emit tags "$tags"
 	emit required_tags "$(printf '%s' "$REQUIRED_TAGS" | tr ' ' ',')"
@@ -437,7 +463,7 @@ emit_status() {
 	emit rollback_available "$rollback_available"
 	if [ "$rollback_available" = '1' ]; then
 		emit rollback_version "$(meta_value version)"
-		emit rollback_package_version "$(meta_value package_version)"
+		emit rollback_package_version "$(shown_version "$(meta_value package_version)")"
 		emit rollback_saved_at "$(meta_value saved_at)"
 		emit rollback_sha256 "$(meta_value sha256)"
 	fi
@@ -451,14 +477,15 @@ check_updates() {
 		esac
 	}
 
-	current="$(package_version)"
+	current="$(shown_version "$(package_version)")"
 	latest=''
 	while IFS="$TAB" read -r name url digest size created; do
 		candidate="${name#sing-box-}"
 		candidate="${candidate%.apk}"
+		shown="$(shown_version "$candidate")"
 		relation='unknown'
 		if [ -n "$current" ]; then
-			comparison="$(apk version --test "$current" "$candidate" 2>/dev/null || true)"
+			comparison="$(apk version --test "$current" "$shown" 2>/dev/null || true)"
 			if [ "$comparison" = '<' ]; then
 				relation='newer'
 			elif [ "$comparison" = '=' ]; then
@@ -468,11 +495,11 @@ check_updates() {
 			fi
 		fi
 		if [ -z "$latest" ] || \
-		   [ "$(apk version --test "$latest" "$candidate" 2>/dev/null || true)" = '<' ]; then
-			latest="$candidate"
+		   [ "$(apk version --test "$latest" "$shown" 2>/dev/null || true)" = '<' ]; then
+			latest="$shown"
 		fi
 		printf 'asset=%s\t%s\t%s\t%s\t%s\t%s\n' \
-			"$name" "$candidate" "$relation" "$size" "$created" "${digest#sha256:}"
+			"$name" "$shown" "$relation" "$size" "$created" "${digest#sha256:}"
 	done < "$assets_file"
 	emit latest_package_version "$latest"
 	emit download_mode "$last_download_mode"
@@ -503,8 +530,7 @@ save_rollback() {
 
 upgrade_core() {
 	target="$1"
-	printf '%s\n' "$target" | grep -Eq \
-		'^sing-box-[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+\.apk$' || \
+	core_package_name "$target" || \
 		fail invalid_target 'Invalid core package selection.'
 	progress querying
 	fetch_assets || fail release_query_failed 'Unable to query the SBProxy package release.'
@@ -520,6 +546,7 @@ EOF
 
 	current_name="sing-box-$current.apk"
 	current_asset="$(find_recovery_asset "$current_name")" || \
+		current_asset="$(find_recovery_asset "sing-box-$(shown_version "$current").apk")" || \
 		fail rollback_source_unavailable \
 		'The installed core package is no longer in the trusted release, so a safe rollback cannot be prepared.'
 	IFS="$TAB" read -r current_name current_url current_digest current_size current_created <<EOF
@@ -557,7 +584,7 @@ EOF
 	[ -z "$expected_instances" ] || was_running=1
 	progress installing
 	if ! install_apk "$candidate_apk" || \
-	   [ "$(package_version)" != "$target_version" ] || \
+	   ! versions_match "$target_version" "$(package_version)" || \
 	   ! validate_binary /usr/bin/sing-box || \
 	   ! restart_if_needed "$was_running"; then
 		if restore_rollback "$was_running"; then

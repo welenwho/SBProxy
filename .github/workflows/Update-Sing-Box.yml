@@ -119,7 +119,7 @@ jobs:
         if: needs.resolve.outputs.build == 'true'
         run: |
           gh release create "$RELEASE_TAG" core-release/* --target "$SOURCE_SHA" \
-            --title "SBProxy core $VERSION-r$REVISION" --latest \
+            --title "SBProxy core $VERSION" --latest \
             --notes "SBProxy full core, ARM64/AMD64. Includes Tailscale route API and Linux policy routing patches. Source: $SOURCE_SHA; upstream: SagerNet/sing-box v$VERSION. See core-manifest.json for checksums and build metadata. The newest 5 stable core releases are kept for online rollback."
       - name: 恢复已发布版本的清单
         if: needs.resolve.outputs.build == 'false'
@@ -132,7 +132,7 @@ jobs:
           source .github/scripts/ci-common.sh
           ci_sync_branch "$PACKAGE_BRANCH"
           python3 .github/scripts/core-release.py pin core-release/core-manifest.json
-          ci_commit_and_push "$PACKAGE_BRANCH" "chore: pin SBProxy core $VERSION-r$REVISION" \
+          ci_commit_and_push "$PACKAGE_BRANCH" "chore: pin SBProxy core $VERSION" \
             sing-box/Makefile sing-box/core-prebuilt.mk
 
   retain:

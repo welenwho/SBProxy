@@ -18,7 +18,9 @@ PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_UPSTREAM_VERSION)
 # No pin yet (bootstrap), unsupported targets and tiny/custom builds use source.
 -include ./core-prebuilt.mk
 CORE_ARCH:=$(if $(filter aarch64,$(ARCH)),arm64,$(if $(filter x86_64,$(ARCH)),amd64))
-CORE_PREBUILT:=$(if $(filter $(PKG_VERSION)-r$(PKG_RELEASE),$(CORE_PIN_VERSION)),$(CORE_SHA256_$(CORE_ARCH)))
+# Legacy pins are 1.14.2-r1. New pins are the upstream version only.
+CORE_PIN_IDENTITY:=$(if $(findstring -r,$(CORE_PIN_VERSION)),$(PKG_VERSION)-r$(PKG_RELEASE),$(PKG_VERSION))
+CORE_PREBUILT:=$(if $(filter $(CORE_PIN_IDENTITY),$(CORE_PIN_VERSION)),$(CORE_SHA256_$(CORE_ARCH)))
 ifneq ($(filter 1 y,$(SBPROXY_CORE_SOURCE_BUILD) $(CONFIG_SING_BOX_BUILD_FROM_SOURCE)),)
   CORE_PREBUILT:=
 endif
@@ -26,10 +28,10 @@ ifneq ($(filter tiny,$(BUILD_VARIANT)),)
   CORE_PREBUILT:=
 endif
 ifneq ($(CORE_PREBUILT),)
-  PKG_SOURCE:=sing-box-$(PKG_VERSION)-r$(PKG_RELEASE)-linux-$(CORE_ARCH).tar.gz
+  PKG_SOURCE:=sing-box-$(CORE_PIN_VERSION)-linux-$(CORE_ARCH).tar.gz
   PKG_SOURCE_URL:=https://github.com/welenwho/packages/releases/download/sbproxy-core-v$(CORE_PIN_VERSION)
   PKG_HASH:=$(CORE_PREBUILT)
-  PKG_BUILD_DIR:=$(BUILD_DIR)/sing-box-$(PKG_VERSION)-r$(PKG_RELEASE)-linux-$(CORE_ARCH)
+  PKG_BUILD_DIR:=$(BUILD_DIR)/sing-box-$(CORE_PIN_VERSION)-linux-$(CORE_ARCH)
   # The archive already contains the patched core.
   PATCH_DIR:=/nonexistent-sbproxy-prebuilt-patches
 endif

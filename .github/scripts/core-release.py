@@ -15,7 +15,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 REPO = 'welenwho/packages'
 KEEP_RELEASES = 5
-CORE_TAG = re.compile(r'^sbproxy-core-v(\d+)\.(\d+)\.(\d+)-r([1-9]\d*)$')
+# Published names use the upstream version. Legacy tags may still end in -rN.
+CORE_TAG = re.compile(r'^sbproxy-core-v(\d+)\.(\d+)\.(\d+)(?:-r([1-9]\d*))?$')
 TAGS = ['with_acme', 'with_clash_api', 'with_dhcp', 'with_gvisor',
         'with_quic', 'with_tailscale', 'with_utls', 'with_wireguard']
 
@@ -66,9 +67,21 @@ def read_pin():
     return dict(re.findall(r'^(\w+):=(.*)$', path.read_text(), re.M)) if path.exists() else {}
 
 
-def core_tag_key(tag):
+def parse_core_tag(tag):
     match = CORE_TAG.fullmatch(tag or '')
-    return tuple(int(part) for part in match.groups()) if match else None
+    if not match:
+        return None
+    version = f'{match[1]}.{match[2]}.{match[3]}'
+    revision = int(match[4]) if match[4] else None
+    return version, revision
+
+
+def core_tag_key(tag):
+    parsed = parse_core_tag(tag)
+    if not parsed:
+        return None
+    version, revision = parsed
+    return tuple(int(part) for part in version.split('.')) + (revision or 0,)
 
 
 def select_retained(tags, keep=KEEP_RELEASES, protected=()):
@@ -103,6 +116,20 @@ def retain(keep=KEEP_RELEASES):
     print(f'kept={",".join(kept)} stale={",".join(stale)} latest={newest}')
 
 
+def manifest_of(release):
+    asset = next((item for item in release.get('assets', []) if item['name'] == 'core-manifest.json'), None)
+    if not asset:
+        return None
+    return json.loads(subprocess.check_output(
+        ['curl', '-fsSL', '--retry', '3', asset['browser_download_url']], text=True))
+
+
+def public_version(version, revision, manifest=None):
+    if manifest and manifest.get('package_version'):
+        return manifest['package_version']
+    return f'{version}-r{revision}' if revision else version
+
+
 def resolve():
     upstream = api('repos/SagerNet/sing-box/releases/latest')
     tag = upstream['tag_name']
@@ -112,36 +139,29 @@ def resolve():
     source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     fp = fingerprint()
     pin = read_pin()
-    existing = []
+    published = []
     for release in releases():
-        match = re.fullmatch(r'sbproxy-core-v' + re.escape(version) + r'-r([1-9]\d*)', release['tag_name'])
-        if match:
-            existing.append((int(match[1]), release))
+        parsed = parse_core_tag(release.get('tag_name'))
+        if not parsed or parsed[0] != version or release.get('draft') or release.get('prerelease'):
+            continue
+        manifest = manifest_of(release)
+        if manifest:
+            published.append((parsed[1] or 0, release, manifest))
     # Reconcile a previously published release if committing the pin failed.
-    for revision, release in sorted(existing, reverse=True):
-        if release['draft'] or release['prerelease']:
+    for revision, release, manifest in sorted(published, reverse=True):
+        if manifest.get('fingerprint') != fp:
             continue
-        asset = next((a for a in release['assets'] if a['name'] == 'core-manifest.json'), None)
-        if not asset:
-            continue
-        manifest = json.loads(subprocess.check_output(
-            ['curl', '-fsSL', '--retry', '3', asset['browser_download_url']], text=True))
-        if manifest.get('fingerprint') == fp:
-            output(build='false', tag=release['tag_name'], version=version,
-                   revision=revision, source_sha=source_sha, fingerprint=fp,
-                   pin_needed=str(pin.get('CORE_PIN_VERSION') != f'{version}-r{revision}' or
-                                  pin.get('CORE_FINGERPRINT') != fp).lower())
-            return
-    current_release = int(re.search(r'^PKG_RELEASE:=(\d+)$',
-                                   (ROOT / 'sing-box/Makefile').read_text(), re.M)[1])
-    current_version = re.search(r'^PKG_VERSION:=(.*)$',
-                                (ROOT / 'sing-box/Makefile').read_text(), re.M)[1]
-    # First standalone release must not collide with the firmware's existing
-    # version, which may have different toolchain/CPU build settings.
-    revision = max([r for r, _ in existing] +
-                   [current_release if version == current_version else 0]) + 1
-    output(build='true', pin_needed='true', version=version, revision=revision,
-           tag=f'sbproxy-core-v{version}-r{revision}', source_sha=source_sha, fingerprint=fp)
+        identity = public_version(version, revision or None, manifest)
+        output(build='false', tag=release['tag_name'], version=version,
+               revision=revision or 1, source_sha=source_sha, fingerprint=fp,
+               pin_needed=str(pin.get('CORE_PIN_VERSION') != identity or
+                              pin.get('CORE_FINGERPRINT') != fp).lower())
+        return
+    if published:
+        raise ValueError(f'{version} is already published; refusing to add a revision suffix or overwrite it')
+    # OpenWrt still needs PKG_RELEASE. It is not part of the published name.
+    output(build='true', pin_needed='true', version=version, revision=1,
+           tag=f'sbproxy-core-v{version}', source_sha=source_sha, fingerprint=fp)
 
 
 def prepare(version, revision, expected_hash=''):
@@ -177,7 +197,7 @@ def assemble(directory, version, revision, fp, source_sha):
     assets = []
     for arch in ('arm64', 'amd64'):
         metadata = json.loads((directory / f'core-{arch}.json').read_text())
-        if metadata['version'] != f'{version}-r{revision}' or metadata['arch'] != arch:
+        if metadata['version'] != version or metadata['arch'] != arch:
             raise ValueError('Build metadata mismatch')
         for item in metadata['assets']:
             path = directory / item['name']
@@ -185,7 +205,7 @@ def assemble(directory, version, revision, fp, source_sha):
                 raise ValueError('Build artifact checksum mismatch')
         assets.append(metadata)
     manifest = dict(schema=1, repository=REPO, profile='sbproxy',
-                    version=version, revision=int(revision), package_version=f'{version}-r{revision}',
+                    version=version, revision=int(revision), package_version=version,
                     upstream_tag=f'v{version}', source_sha=source_sha, fingerprint=fp,
                     required_tags=TAGS, patches=['tailscale-route-api', 'tailscale-linux-policy-routing'],
                     builds=assets)
@@ -207,7 +227,7 @@ def pin(manifest_path):
     if manifest['fingerprint'] != fingerprint():
         raise ValueError('Source changed since build; retry from the current branch')
     prepare(version, revision, manifest['source_hash'])
-    entries = {'CORE_PIN_VERSION': f'{version}-r{revision}',
+    entries = {'CORE_PIN_VERSION': public_version(version, int(revision), manifest),
                'CORE_FINGERPRINT': manifest['fingerprint']}
     for build in manifest['builds']:
         tar = next(a for a in build['assets'] if a['name'].endswith('.tar.gz'))
