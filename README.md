@@ -7,7 +7,7 @@
 | 插件 | 版本 | 简介 | 源码来源 |
 | --- | --- | --- | --- |
 | `luci-app-gecoosac` | `20260812-r4` | gecoosac 核心的 LuCI 管理界面与 OpenWrt 集成。 | [welenwho/packages](https://github.com/welenwho/packages) |
-| `luci-app-sbproxy` | `1.0.1-r26` | sing-box 代理与 VPN 平台，支持可选的内置 Tailscale。 | [welenwho/packages](https://github.com/welenwho/packages) |
+| `luci-app-sbproxy` | `1.0.1-r27` | sing-box 代理与 VPN 平台，支持可选的内置 Tailscale。 | [welenwho/packages](https://github.com/welenwho/packages) |
 | `luci-app-wolultra` | `20260812-r3` | wol 功能的 LuCI 管理界面与 OpenWrt 集成。 | [welenwho/packages](https://github.com/welenwho/packages) |
 
 ## 核心与依赖来源
