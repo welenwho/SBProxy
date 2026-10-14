@@ -14,6 +14,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 REPO = 'welenwho/packages'
+KEEP_RELEASES = 5
+CORE_TAG = re.compile(r'^sbproxy-core-v(\d+)\.(\d+)\.(\d+)-r([1-9]\d*)$')
 TAGS = ['with_acme', 'with_clash_api', 'with_dhcp', 'with_gvisor',
         'with_quic', 'with_tailscale', 'with_utls', 'with_wireguard']
 
@@ -62,6 +64,43 @@ def output(**values):
 def read_pin():
     path = ROOT / 'sing-box/core-prebuilt.mk'
     return dict(re.findall(r'^(\w+):=(.*)$', path.read_text(), re.M)) if path.exists() else {}
+
+
+def core_tag_key(tag):
+    match = CORE_TAG.fullmatch(tag or '')
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
+def select_retained(tags, keep=KEEP_RELEASES, protected=()):
+    """Return newest core tags to keep, older tags to delete, and the latest tag."""
+    if keep < 1:
+        raise ValueError('Retention count must be positive')
+    ranked = sorted({tag for tag in tags if core_tag_key(tag)}, key=core_tag_key, reverse=True)
+    kept = ranked[:keep]
+    kept_set = set(kept)
+    for tag in protected:
+        if tag in kept_set or tag not in ranked:
+            continue
+        kept.append(tag)
+        kept_set.add(tag)
+    stale = [tag for tag in ranked if tag not in kept_set]
+    return kept, stale, ranked[0] if ranked else ''
+
+
+def retain(keep=KEEP_RELEASES):
+    keep = int(keep)
+    tags = [release.get('tag_name') or '' for release in releases()
+            if not release.get('draft') and not release.get('prerelease')]
+    pin = read_pin().get('CORE_PIN_VERSION', '')
+    protected = [f'sbproxy-core-v{pin}'] if core_tag_key(f'sbproxy-core-v{pin}') else []
+    kept, stale, newest = select_retained(tags, keep, protected)
+    repo = os.environ.get('GITHUB_REPOSITORY', REPO)
+    for tag in stale:
+        subprocess.run(['gh', 'release', 'delete', tag, '--repo', repo,
+                        '--cleanup-tag', '--yes'], check=True)
+    if newest:
+        subprocess.run(['gh', 'release', 'edit', newest, '--repo', repo, '--latest'], check=True)
+    print(f'kept={",".join(kept)} stale={",".join(stale)} latest={newest}')
 
 
 def resolve():
@@ -196,4 +235,4 @@ def export_metadata(directory, arch, version, apk_arch, binary_sha, build_output
 if __name__ == '__main__':
     command, *arguments = sys.argv[1:]
     {'resolve': resolve, 'prepare': prepare, 'assemble': assemble, 'pin': pin,
-     'export': export_metadata}[command](*arguments)
+     'export': export_metadata, 'retain': retain}[command](*arguments)

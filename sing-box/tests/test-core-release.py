@@ -49,6 +49,38 @@ class CoreReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 core.resolve()
 
+    def test_retention_keeps_five_newest_and_pinned_release(self):
+        tags = [f'sbproxy-core-v1.14.{index}-r1' for index in range(8)]
+        tags.append('sbproxy-core-v1.13.0-r9')
+        tags.append('apk-packages-arm64')
+        kept, stale, newest = core.select_retained(
+            tags, protected=('sbproxy-core-v1.13.0-r9',))
+        self.assertEqual(newest, 'sbproxy-core-v1.14.7-r1')
+        self.assertEqual(kept[:5], [
+            'sbproxy-core-v1.14.7-r1',
+            'sbproxy-core-v1.14.6-r1',
+            'sbproxy-core-v1.14.5-r1',
+            'sbproxy-core-v1.14.4-r1',
+            'sbproxy-core-v1.14.3-r1',
+        ])
+        self.assertIn('sbproxy-core-v1.13.0-r9', kept)
+        self.assertIn('sbproxy-core-v1.14.0-r1', stale)
+        self.assertNotIn('apk-packages-arm64', stale)
+        higher_revision, _, _ = core.select_retained([
+            'sbproxy-core-v1.14.3-r2', 'sbproxy-core-v1.14.3-r10',
+            'sbproxy-core-v1.14.10-r1'])
+        self.assertEqual(higher_revision[0], 'sbproxy-core-v1.14.10-r1')
+
+    def test_release_workflow_publishes_latest_and_retains_five(self):
+        workflow = (ROOT / '.github/workflows/Update-Sing-Box.yml').read_text()
+        queue = (ROOT / '.github/workflows/Daily-Maintenance-Queue.yml').read_text()
+        self.assertIn('core-release.py retain', workflow)
+        self.assertNotIn('--latest=false', workflow)
+        self.assertIn('--latest', workflow)
+        self.assertIn("cron: '17 18 * * *'", queue)
+        self.assertIn("cron: '47 6 * * *'", queue)
+        self.assertNotIn("cron: '0 18 * * *'", queue)
+
     def test_pin_retry_reuses_published_artifact(self):
         release = dict(tag_name='sbproxy-core-v1.14.0-r2', draft=False, prerelease=False,
                        assets=[dict(name='core-manifest.json', browser_download_url='https://example.test')])

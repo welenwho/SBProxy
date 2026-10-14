@@ -22,6 +22,10 @@ LATEST_ASSETS_FILE="${3:-}"
 	printf 'Invalid retention count: %s\n' "$KEEP" >&2
 	exit 1
 }
+if (( KEEP > 5 )); then
+	printf 'Retention count %s exceeds the five-version limit; keeping 5\n' "$KEEP"
+	KEEP=5
+fi
 
 release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')"
 assets_file="$(mktemp)"

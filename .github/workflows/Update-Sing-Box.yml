@@ -56,6 +56,12 @@ jobs:
           python3 luci-app-sbproxy/tests/test-core-switch.py
           sh sing-box/tests/static-tailscale-route-api.sh
           python3 .github/scripts/core-release.py resolve
+          {
+            echo '### Sing-Box 核心检查'
+            echo "- 上游版本：$(awk -F= '$1 == "version" { print $2 }' "$GITHUB_OUTPUT")"
+            echo "- 是否构建：$(awk -F= '$1 == "build" { print $2 }' "$GITHUB_OUTPUT")"
+            echo "- 发布标签：$(awk -F= '$1 == "tag" { print $2 }' "$GITHUB_OUTPUT")"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     needs: resolve
@@ -113,8 +119,8 @@ jobs:
         if: needs.resolve.outputs.build == 'true'
         run: |
           gh release create "$RELEASE_TAG" core-release/* --target "$SOURCE_SHA" \
-            --title "SBProxy core $VERSION-r$REVISION" --latest=false \
-            --notes "SBProxy full core, ARM64/AMD64. Includes Tailscale route API and Linux policy routing patches. Source: $SOURCE_SHA; upstream: SagerNet/sing-box v$VERSION. See core-manifest.json for checksums and build metadata. Historical releases are retained for online rollback."
+            --title "SBProxy core $VERSION-r$REVISION" --latest \
+            --notes "SBProxy full core, ARM64/AMD64. Includes Tailscale route API and Linux policy routing patches. Source: $SOURCE_SHA; upstream: SagerNet/sing-box v$VERSION. See core-manifest.json for checksums and build metadata. The newest 5 stable core releases are kept for online rollback."
       - name: 恢复已发布版本的清单
         if: needs.resolve.outputs.build == 'false'
         run: gh release download "$RELEASE_TAG" --pattern core-manifest.json --dir core-release
@@ -128,6 +134,26 @@ jobs:
           python3 .github/scripts/core-release.py pin core-release/core-manifest.json
           ci_commit_and_push "$PACKAGE_BRANCH" "chore: pin SBProxy core $VERSION-r$REVISION" \
             sing-box/Makefile sing-box/core-prebuilt.mk
+
+  retain:
+    name: 最多保留 5 个核心版本
+    needs: [resolve, publish]
+    if: >-
+      always() && needs.resolve.result == 'success' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: repository-maintenance
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: 删除超出 5 个的历史核心 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/core-release.py retain
 
   rolling_packages:
     needs: publish

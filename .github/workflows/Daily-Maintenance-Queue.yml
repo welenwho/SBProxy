@@ -3,8 +3,10 @@ name: 每日维护任务队列
 on:
   workflow_dispatch:
   schedule:
-    # 中国时间 02:00
-    - cron: '0 18 * * *'
+    # GitHub 会在整点高峰丢弃 schedule。错开分钟，并每天检查两次，
+    # 避免一次丢弃就错过上游稳定版。对应北京时间 02:17 和 14:47。
+    - cron: '17 18 * * *'
+    - cron: '47 6 * * *'
 
 permissions:
   actions: write
