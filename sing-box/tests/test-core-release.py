@@ -86,6 +86,23 @@ class CoreReleaseTests(unittest.TestCase):
         self.assertIn("cron: '47 6 * * *'", queue)
         self.assertNotIn("cron: '0 18 * * *'", queue)
 
+    def test_published_version_is_not_rebuilt_with_revision(self):
+        release = dict(tag_name='sbproxy-core-v1.14.3', draft=False, prerelease=False,
+                       assets=[dict(name='core-manifest.json', browser_download_url='https://example.test')])
+        real_check = subprocess.check_output
+        def check(command, **kw):
+            if command[0] == 'curl':
+                return json.dumps(dict(fingerprint='different', package_version='1.14.3'))
+            return real_check(command, **kw)
+        with patch.object(core, 'api', return_value=dict(tag_name='v1.14.3', draft=False, prerelease=False)), \
+             patch.object(core, 'releases', return_value=[release]), \
+             patch.object(core.subprocess, 'check_output', side_effect=check), \
+             patch.object(core, 'output') as out:
+            core.resolve()
+            self.assertEqual(out.call_args.kwargs['build'], 'false')
+            self.assertEqual(out.call_args.kwargs['tag'], 'sbproxy-core-v1.14.3')
+            self.assertEqual(out.call_args.kwargs['pin_needed'], 'false')
+
     def test_pin_retry_reuses_published_artifact(self):
         release = dict(tag_name='sbproxy-core-v1.14.0-r2', draft=False, prerelease=False,
                        assets=[dict(name='core-manifest.json', browser_download_url='https://example.test')])

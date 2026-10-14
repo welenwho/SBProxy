@@ -158,7 +158,16 @@ def resolve():
                               pin.get('CORE_FINGERPRINT') != fp).lower())
         return
     if published:
-        raise ValueError(f'{version} is already published; refusing to add a revision suffix or overwrite it')
+        # One published name per upstream version. A later build-input change
+        # waits for the next upstream release instead of adding -rN.
+        revision, release, manifest = sorted(published, reverse=True)[0]
+        identity = public_version(version, revision or None, manifest)
+        same = manifest.get('fingerprint') == fp
+        output(build='false', tag=release['tag_name'], version=version,
+               revision=revision or 1, source_sha=source_sha, fingerprint=fp,
+               pin_needed=str(same and (pin.get('CORE_PIN_VERSION') != identity or
+                                        pin.get('CORE_FINGERPRINT') != fp)).lower())
+        return
     # OpenWrt still needs PKG_RELEASE. It is not part of the published name.
     output(build='true', pin_needed='true', version=version, revision=1,
            tag=f'sbproxy-core-v{version}', source_sha=source_sha, fingerprint=fp)
