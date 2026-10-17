@@ -35,7 +35,7 @@ assert.match(client, /ingressStatusContent\(data\[4\]/);
 const generator = read('root/etc/sbproxy/scripts/generate_client.uc');
 assert.match(generator, /config\.route\.final = 'main-out';/);
 assert.match(generator, /config\.route\.final = final_outbound;/);
-assert.match(generator, /const enable_clash_api = main_node === 'urltest';/);
+assert.match(generator, /const enable_clash_api = main_node === 'urltest' \|\| length\(smart_groups\) > 0;/);
 assert.match(generator, /add_tailscale_exit_node_rule/);
 assert.match(generator, /renderRouteMatch/);
 assert.match(read('root/etc/sbproxy/scripts/firewall_pre.uc'), /iifname != \{ \$\{allowed\} \}/);

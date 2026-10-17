@@ -7,7 +7,7 @@
 
 'use strict';
 
-import { readfile, writefile } from 'fs';
+import { readfile, writefile, popen } from 'fs';
 import { isnan } from 'math';
 import { connect } from 'ubus';
 import { ingressEnabled } from 'ingress';
@@ -1075,6 +1075,23 @@ function emit_node(entry, endpoint) {
 	emitted_nodes[entry.tag] = signature;
 	push(endpoint ? config.endpoints : config.outbounds, entry);
 }
+/* Smart selection keeps the same routing tags and candidate resolution as URLTest. */
+const smart_groups = [];
+function selection_group(group, enabled, bandwidth) {
+	group.interval ||= '60s';
+	group.tolerance ??= 75;
+	if (!enabled) return group;
+	const fallback = reserveUniqueLabel(outbound_tags, `${group.tag}-smart-fallback`, 'smart-fallback');
+	push(config.outbounds, { ...group, tag: fallback });
+	push(smart_groups, {
+		tag: group.tag, nodes: group.outbounds, fallback,
+		bandwidth
+	});
+	return {
+		type: 'selector', tag: group.tag, outbounds: [fallback, ...group.outbounds],
+		default: fallback, interrupt_exist_connections: group.interrupt_exist_connections
+	};
+}
 /* Main outbounds */
 if (!isEmpty(main_node)) {
 	let urltest_nodes = [];
@@ -1087,11 +1104,11 @@ if (!isEmpty(main_node)) {
 		);
 		if (!length(main_urltest_nodes))
 			die('Main URLTest group has no available nodes.');
-		const main_urltest_interval = uci.get(uciconfig, ucimain, 'main_urltest_interval');
-		const main_urltest_tolerance = uci.get(uciconfig, ucimain, 'main_urltest_tolerance');
+		const main_urltest_interval = uci.get(uciconfig, ucimain, 'main_urltest_interval') || '60';
+		const main_urltest_tolerance = uci.get(uciconfig, ucimain, 'main_urltest_tolerance') ?? '75';
 		const main_urltest_interrupt = uci.get(uciconfig, ucimain, 'main_urltest_interrupt_exist_connections') || '0';
 
-		push(config.outbounds, {
+		push(config.outbounds, selection_group({
 			type: 'urltest',
 			tag: 'main-out',
 			outbounds: map(main_urltest_nodes, (k) => get_node_outbound_tag(k)),
@@ -1099,7 +1116,8 @@ if (!isEmpty(main_node)) {
 			tolerance: strToInt(main_urltest_tolerance),
 			idle_timeout: (strToInt(main_urltest_interval) > 1800) ? `${main_urltest_interval * 2}s` : null,
 			interrupt_exist_connections: strToBool(main_urltest_interrupt)
-		});
+		}, uci.get(uciconfig, ucimain, 'main_urltest_smart') === '1',
+		   uci.get(uciconfig, ucimain, 'main_urltest_smart_bandwidth') !== '0'));
 		urltest_nodes = main_urltest_nodes;
 	} else {
 		const main_node_cfg = uci.get_all(uciconfig, main_node) || {};
@@ -1146,16 +1164,16 @@ if (!isEmpty(main_node)) {
 			);
 			if (!length(urltest_list))
 				die(sprintf('Routing URLTest group %s has no available nodes.', cfg['.name']));
-			push(config.outbounds, {
+			push(config.outbounds, selection_group({
 				type: 'urltest',
 				tag: get_routing_outbound_tag(cfg['.name']),
 				outbounds: map(urltest_list, (k) => get_node_outbound_tag(k)),
 				url: cfg.urltest_url,
-				interval: strToTime(cfg.urltest_interval),
-				tolerance: strToInt(cfg.urltest_tolerance),
+				interval: strToTime(cfg.urltest_interval || '60'),
+				tolerance: strToInt(cfg.urltest_tolerance ?? '75'),
 				idle_timeout: strToTime(cfg.urltest_idle_timeout),
 				interrupt_exist_connections: strToBool(cfg.urltest_interrupt_exist_connections || '0')
-			});
+			}, cfg.urltest_smart === '1', cfg.urltest_smart_bandwidth !== '0'));
 			urltest_nodes = [...urltest_nodes, ...filter(urltest_list, (l) => !~index(urltest_nodes, l))];
 		} else {
 			const outbound = uci.get_all(uciconfig, cfg.node) || {};
@@ -1446,10 +1464,30 @@ if (length(domain_groups)) {
 	}
 }
 
+/* A private probe selector never carries user connections. */
+let smart_probe_port = null;
+let smart_probe_tag = null;
+if (length(smart_groups)) {
+	const reserved = [clash_api_port, dashboard_port, tailscale_api_port];
+	for (let inbound in config.inbounds) if (inbound.listen_port) push(reserved, inbound.listen_port);
+	const fd = popen('/usr/libexec/sbproxy-random-port ' + join(' ', map(reserved, (p) => int(p))));
+	smart_probe_port = fd ? int(fd.read('all')) : null;
+	if (fd) fd.close();
+	if (!smart_probe_port || smart_probe_port < 1024 || smart_probe_port > 65535)
+		die('Unable to allocate smart selection probe port.');
+	smart_probe_tag = reserveUniqueLabel(outbound_tags, 'sbproxy-smart-probe-out', 'smart-probe');
+	const nodes = [];
+	for (let group in smart_groups)
+		for (let node in group.nodes) if (index(nodes, node) < 0) push(nodes, node);
+	push(config.outbounds, { type: 'selector', tag: smart_probe_tag, outbounds: nodes });
+	push(config.inbounds, { type: 'mixed', tag: 'sbproxy-smart-probe-in', listen: '127.0.0.1', listen_port: smart_probe_port });
+	unshift(config.route.rules, { inbound: 'sbproxy-smart-probe-in', action: 'route', outbound: smart_probe_tag });
+}
+
 /* Routing rules end */
 
 /* Experimental start */
-const enable_clash_api = main_node === 'urltest';
+const enable_clash_api = main_node === 'urltest' || length(smart_groups) > 0;
 const enable_cache_file = proxy_client_enabled &&
       routing_mode in ['bypass_mainland_china', 'custom'];
 if (enable_clash_api || enable_cache_file) {
@@ -1541,3 +1579,7 @@ system('mkdir -p ' + RUN_DIR);
 const output_path = getenv('SBPROXY_CLIENT_CONFIG_PATH') || RUN_DIR + '/sing-box-c.json.new';
 if (!writefile(output_path, sprintf('%.J\n', removeBlankAttrs(config))))
 	exit(1);
+
+if (!writefile(output_path + '.smart.json', sprintf('%.J\n', {
+	api_port: clash_api_port, probe_port: smart_probe_port, probe_tag: smart_probe_tag, groups: smart_groups
+}))) die('Unable to write smart selection plan.');

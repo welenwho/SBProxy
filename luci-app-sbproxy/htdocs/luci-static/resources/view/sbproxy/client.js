@@ -229,7 +229,7 @@ return view.extend({
 						let active = current.active || {};
 						let nodeName = (active?.id && active.id !== 'urltest') ? (proxy_nodes[active.id] || active.label || active.id) : _('Invalid node');
 
-						current_label = _('URLTest: %s').format(nodeName);
+						current_label = (current.smart ? _('Smart selection: %s') : _('URLTest: %s')).format(nodeName);
 					}
 
 						let view = document.getElementById('service_status');
@@ -329,17 +329,31 @@ return view.extend({
 		o.rmempty = true;
 		o.retain = true;
 
-		o = s.taboption('routing', form.Value, 'main_urltest_interval', _('Test interval'),
-			_('The test interval in seconds.'));
-		o.datatype = 'uinteger';
-		o.placeholder = '180';
+		o = s.taboption('routing', form.Flag, 'main_urltest_smart', _('Smart node selection'),
+			_('Evaluate multiple HTTPS targets, reliability and jitter every 60 seconds. Switch after sustained improvement, or repeated failures.'));
+		o.default = o.disabled;
+		o.rmempty = false;
+		proxyModeDepends(o, { main_node: 'urltest' }, ['bypass_mainland_china', 'global']);
+		o.retain = true;
+
+		o = s.taboption('routing', form.Flag, 'main_urltest_smart_bandwidth', _('Measure download performance'),
+			_('Download up to 256 KiB per candidate for the best three candidates every 10 minutes. Uses about 108 MiB per day per group at most, excluding connection overhead.'));
+		o.default = o.enabled;
+		o.rmempty = false;
+		proxyModeDepends(o, { main_node: 'urltest', main_urltest_smart: '1' }, ['bypass_mainland_china', 'global']);
+		o.retain = true;
+
+		o = s.taboption('routing', form.Value, 'main_urltest_interval', _('URLTest interval'),
+			_('URLTest interval in seconds (default: 60). Smart selection uses its own 60-second cycle; large groups may take longer.'));
+		o.datatype = 'range(10,86400)';
+		o.placeholder = '60';
 		proxyModeDepends(o, { main_node: 'urltest' }, ['bypass_mainland_china', 'global']);
 		o.retain = true;
 
 		o = s.taboption('routing', form.Value, 'main_urltest_tolerance', _('Test tolerance'),
-			_('The test tolerance in milliseconds.'));
+			_('The test tolerance in milliseconds (default: 75).'));
 		o.datatype = 'uinteger';
-		o.placeholder = '50';
+		o.placeholder = '75';
 		proxyModeDepends(o, { main_node: 'urltest' }, ['bypass_mainland_china', 'global']);
 		o.retain = true;
 
@@ -828,6 +842,20 @@ return view.extend({
 		so.depends('node', 'urltest');
 		so.modalonly = true;
 
+		so = ss.option(form.Flag, 'urltest_smart', _('Smart node selection'),
+			_('Evaluate multiple HTTPS targets, reliability and jitter every 60 seconds. Switch after sustained improvement, or repeated failures.'));
+		so.default = so.disabled;
+		so.rmempty = false;
+		so.depends('node', 'urltest');
+		so.modalonly = true;
+
+		so = ss.option(form.Flag, 'urltest_smart_bandwidth', _('Measure download performance'),
+			_('Download up to 256 KiB per candidate for the best three candidates every 10 minutes. Uses about 108 MiB per day per group at most, excluding connection overhead.'));
+		so.default = so.enabled;
+		so.rmempty = false;
+		so.depends({node: 'urltest', urltest_smart: '1'});
+		so.modalonly = true;
+
 		so = ss.option(form.Value, 'urltest_url', _('Test URL'),
 			_('The URL to test.'));
 		so.placeholder = 'https://www.gstatic.com/generate_204';
@@ -848,13 +876,13 @@ return view.extend({
 		so.depends('node', 'urltest');
 		so.modalonly = true;
 
-		so = ss.option(form.Value, 'urltest_interval', _('Test interval'),
-			_('The test interval in seconds.'));
-		so.datatype = 'uinteger';
-		so.placeholder = '180';
+		so = ss.option(form.Value, 'urltest_interval', _('URLTest interval'),
+			_('URLTest interval in seconds (default: 60). Smart selection uses its own 60-second cycle; large groups may take longer.'));
+		so.datatype = 'range(10,86400)';
+		so.placeholder = '60';
 		so.validate = function(section_id, value) {
 			if (section_id && value) {
-				let idle_timeout = this.section.formvalue(section_id, 'idle_timeout') || '1800';
+				let idle_timeout = this.section.formvalue(section_id, 'urltest_idle_timeout') || '1800';
 				if (parseInt(value) > parseInt(idle_timeout))
 					return _('Test interval must be less or equal than idle timeout.');
 			}
@@ -865,9 +893,9 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(form.Value, 'urltest_tolerance', _('Test tolerance'),
-			_('The test tolerance in milliseconds.'));
+			_('The test tolerance in milliseconds (default: 75).'));
 		so.datatype = 'uinteger';
-		so.placeholder = '50';
+		so.placeholder = '75';
 		so.depends('node', 'urltest');
 		so.modalonly = true;
 

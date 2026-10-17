@@ -5056,3 +5056,27 @@ msgstr ""
 
 msgid "Disable is retained for compatibility. Use Proxy mode to turn the proxy off while keeping the selected node."
 msgstr ""
+
+msgid "Smart node selection"
+msgstr ""
+
+msgid "Evaluate multiple HTTPS targets, reliability and jitter every 60 seconds. Switch after sustained improvement, or repeated failures."
+msgstr ""
+
+msgid "Measure download performance"
+msgstr ""
+
+msgid "Download up to 256 KiB per candidate for the best three candidates every 10 minutes. Uses about 108 MiB per day per group at most, excluding connection overhead."
+msgstr ""
+
+msgid "URLTest interval"
+msgstr ""
+
+msgid "URLTest interval in seconds (default: 60). Smart selection uses its own 60-second cycle; large groups may take longer."
+msgstr ""
+
+msgid "The test tolerance in milliseconds (default: 75)."
+msgstr ""
+
+msgid "Smart selection: %s"
+msgstr ""

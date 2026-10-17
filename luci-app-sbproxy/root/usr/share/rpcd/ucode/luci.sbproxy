@@ -9,6 +9,7 @@
 
 import { lstat, open, popen, readfile, writefile } from 'fs';
 import { cursor } from 'uci';
+import { urlencode } from 'luci.http';
 import { connect } from 'ubus';
 
 import {
@@ -900,7 +901,20 @@ const methods = {
 				data = json(payload);
 			} catch (e) {}
 
-			const tag = trim(data?.now || '');
+			let tag = trim(data?.now || '');
+			const smart = uci.get('sbproxy', 'config', 'main_urltest_smart') === '1';
+			/* Resolve the initial URLTest fallback to its leaf node for display. */
+			if (smart && tag) {
+				let plan = null;
+				try { plan = json(readfile(RUN_DIR + '/sing-box-c.json.smart.json')); } catch (e) {}
+				const group = filter(plan?.groups || [], (g) => g.tag === 'main-out')[0];
+				if (group && tag === group.fallback) {
+					const result = runCommand('/usr/bin/curl --noproxy ' + shellQuote('*') +
+						' -fsS --connect-timeout 1 --max-time 2 ' +
+						shellQuote(`http://127.0.0.1:${clash_api_port}/proxies/` + urlencode(tag)));
+					try { tag = trim(json(result.output)?.now || tag); } catch (e) {}
+				}
+			}
 			if (!tag)
 				return {
 					mode: 'urltest',
@@ -913,6 +927,7 @@ const methods = {
 
 			return {
 				mode: 'urltest',
+				smart,
 				active: formatNode(section_id, tag),
 				error: null
 			};

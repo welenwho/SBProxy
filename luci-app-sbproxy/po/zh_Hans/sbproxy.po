@@ -5187,3 +5187,27 @@ msgstr "关闭代理流量接管，不停止已启用的 Tailscale 或服务端�
 
 msgid "Disable is retained for compatibility. Use Proxy mode to turn the proxy off while keeping the selected node."
 msgstr "保留“禁用”以兼容旧配置。建议通过“代理模式”关闭代理，这样可以保留已选节点。"
+
+msgid "Smart node selection"
+msgstr "智能选节点"
+
+msgid "Evaluate multiple HTTPS targets, reliability and jitter every 60 seconds. Switch after sustained improvement, or repeated failures."
+msgstr "每 60 秒综合检测多个 HTTPS 目标的可用性、延迟和波动。持续明显更优或当前节点连续失败时切换。"
+
+msgid "Measure download performance"
+msgstr "检测下载表现"
+
+msgid "Download up to 256 KiB per candidate for the best three candidates every 10 minutes. Uses about 108 MiB per day per group at most, excluding connection overhead."
+msgstr "每 10 分钟为排名靠前的最多三个候选节点各下载至多 256 KiB。每组每天最多约 108 MiB，不含连接开销。"
+
+msgid "URLTest interval"
+msgstr "URLTest 检测间隔"
+
+msgid "URLTest interval in seconds (default: 60). Smart selection uses its own 60-second cycle; large groups may take longer."
+msgstr "URLTest 检测间隔，单位为秒，默认 60。智能选节点使用独立的 60 秒检测周期，候选节点较多时可能延长。"
+
+msgid "The test tolerance in milliseconds (default: 75)."
+msgstr "切换容差，单位为毫秒，默认 75。"
+
+msgid "Smart selection: %s"
+msgstr "智能选节点：%s"
