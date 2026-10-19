@@ -102,18 +102,14 @@ plugin_description() {
 	local package_dir="$1"
 
 	case "$package_dir" in
-		luci-app-gecoosac)
-			printf 'gecoosac 核心的 LuCI 管理界面与 OpenWrt 集成。\n'
-			;;
 		luci-app-sbproxy)
-			printf 'sing-box 代理与 VPN 平台，支持可选的内置 Tailscale。\n'
+			printf 'SBProxy 的 LuCI 管理界面，负责代理、节点、Tailscale 与核心管理。\n'
 			;;
-		luci-app-wolultra)
-			printf 'wol 功能的 LuCI 管理界面与 OpenWrt 集成。\n'
+		sing-box)
+			printf '带本项目 Tailscale 兼容补丁的 sing-box 核心，供固件打包和在线安装。\n'
 			;;
 		*)
-			printf '%s 的 LuCI 管理界面与 OpenWrt 集成。\n' \
-				"${package_dir#luci-app-}"
+			printf '%s。\n' "$package_dir"
 			;;
 	esac
 }
@@ -121,44 +117,49 @@ plugin_description() {
 mapfile -t package_dirs < <(ci_discover_packages)
 
 {
-	echo '# imm-packages · AI Edition'
+	echo '# SBProxy'
 	echo
-	echo '这是一个个人自用的 OpenWrt/ImmortalWrt 插件分享仓库。插件以实际使用需求为导向，并借助 AI 完成维护、适配、审计和自动化，因此统一标记为 **AI Edition**。'
+	echo '**个人自用。** 本仓库只为作者自己的 OpenWrt / ImmortalWrt（ARM64、AMD64）路由器维护 SBProxy，公开代码仅用于自行同步与备份，不提供代理服务，也不对他人的下载、编译或安装负责。使用者须自行评估并承担网络访问、合规与安全风险。'
 	echo
-	echo '## 插件简介'
+	echo 'LuCI 界面管理客户端、服务端、节点和核心；流量由 TUN 接管，Tailscale 可以跑在同一个 sing-box 进程里。'
 	echo
-	echo '| 插件 | 版本 | 简介 | 源码来源 |'
+	echo '## 说明'
+	echo
+	echo '- **代理模式**：关闭、大陆白名单、自定义路由、全局。大陆白名单支持域名、地址、端口和规则集分流。'
+	echo '- **节点**：订阅导入、URLTest，以及在候选组内按延迟和短下载表现智能选节点。'
+	echo '- **接入控制**：可按 Wi-Fi 或有线接口让部分来源不接管，其余来源继续走现有分流。'
+	echo '- **Tailscale**：内置在 SBProxy 的 sing-box 进程中，可以不依赖代理节点单独运行。'
+	echo '- **核心**：发布带本项目 Tailscale 兼容补丁的 sing-box 预编译核心。官方上游二进制不含这些补丁。'
+	echo
+	echo '行为细节见文档：'
+	echo
+	echo '- [TUN 接管与分流](docs/sbproxy-diversion.md)'
+	echo '- [代理模式](docs/sbproxy-proxy-mode.md)'
+	echo '- [智能选节点](docs/sbproxy-smart-selection.md)'
+	echo '- [接入接口分流](docs/sbproxy-ingress-policy.md)'
+	echo '- [独立核心构建与发布](docs/sbproxy-core.md)'
+	echo '- [自适应规则移除](docs/sbproxy-adaptive-removal.md)'
+	echo
+	echo '## 软件包'
+	echo
+	echo '| 软件包 | 版本 | 说明 | 源码来源 |'
 	echo '| --- | --- | --- | --- |'
 	for package_dir in "${package_dirs[@]}"; do
 		name="$(ci_package_name "$package_dir")"
-		[[ "$name" == luci-app-* ]] || continue
-		version="$(ci_package_version "$package_dir")"
+		if [[ "$name" == sing-box ]]; then
+			version="$(ci_make_value "$package_dir" PKG_VERSION)"
+		else
+			version="$(ci_package_version "$package_dir")"
+		fi
 		description="$(plugin_description "$package_dir")"
 		source_url="$(package_source_url "$package_dir")"
 		printf "| \`%s\` | \`%s\` | %s | %s |\n" \
 			"$name" "$version" "$description" "$(source_label "$source_url")"
 	done
 	echo
-	echo '## 核心与依赖来源'
-	echo
-	echo '| 软件包 | 版本 | 源码来源 |'
-	echo '| --- | --- | --- |'
-	for package_dir in "${package_dirs[@]}"; do
-		name="$(ci_package_name "$package_dir")"
-		[[ "$name" != luci-app-* ]] || continue
-		if [[ "$name" == sing-box ]]; then
-			version="$(ci_make_value "$package_dir" PKG_VERSION)"
-		else
-			version="$(ci_package_version "$package_dir")"
-		fi
-		source_url="$(package_source_url "$package_dir")"
-		printf "| \`%s\` | \`%s\` | %s |\n" \
-			"$name" "$version" "$(source_label "$source_url")"
-	done
-	echo
 	echo '## 自动维护'
 	echo
-	echo 'CI 每天两次检查受维护的上游项目（北京时间 02:17 和 14:47），仅在发现更新时继续构建、提交和发布。软件包目录通过 Makefile 自动发现；新增或删除软件包后，构建范围和发布资产清理会自动调整，LuCI 插件列表也会自动更新。'
+	echo 'CI 每天两次检查 sing-box 上游稳定版和 SBProxy 规则数据（北京时间 02:17 和 14:47），仅在发现更新时继续构建、提交和发布。软件包目录通过 Makefile 自动发现；新增或删除软件包后，构建范围和发布资产清理会自动调整。'
 	echo
 	echo '独立 sing-box 核心按稳定版发布，最多保留 5 个版本。APK 发布按 ARM64 和 AMD64 分开维护；每个包名保留最近三个版本，并提供包含各软件包最新版的整合包。'
 	echo
