@@ -25,7 +25,7 @@ LuCI 界面管理客户端、服务端、节点和核心；流量由 TUN 接管�
 
 | 软件包 | 版本 | 说明 | 源码来源 |
 | --- | --- | --- | --- |
-| `luci-app-sbproxy` | `1.0.1-r29` | SBProxy 的 LuCI 管理界面，负责代理、节点、Tailscale 与核心管理。 | [welenwho/packages](https://github.com/welenwho/packages) |
+| `luci-app-sbproxy` | `1.0.1-r30` | SBProxy 的 LuCI 管理界面，负责代理、节点、Tailscale 与核心管理。 | [welenwho/packages](https://github.com/welenwho/packages) |
 | `sing-box` | `1.14.3` | 带本项目 Tailscale 兼容补丁的 sing-box 核心，供固件打包和在线安装。 | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) |
 
 ## 自动维护
