@@ -15,7 +15,7 @@
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "sbproxy/client-1-0-1-r38"
+			"path": "sbproxy/client-1-0-1-r39"
 		}
 	},
 	"admin/vpn/sbproxy/tailscale": {
@@ -23,7 +23,7 @@
 		"order": 12,
 		"action": {
 			"type": "view",
-			"path": "sbproxy/tailscale-1-0-1-r38"
+			"path": "sbproxy/tailscale-1-0-1-r39"
 		}
 	},
 	"admin/vpn/sbproxy/node": {
@@ -43,11 +43,11 @@
 		}
 	},
 	"admin/vpn/sbproxy/core": {
-		"title": "Core Management",
+		"title": "Version Management",
 		"order": 25,
 		"action": {
 			"type": "view",
-			"path": "sbproxy/core-1-0-1-r38"
+			"path": "sbproxy/core-1-0-1-r39"
 		}
 	},
 	"admin/vpn/sbproxy/status": {

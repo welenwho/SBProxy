@@ -5215,3 +5215,135 @@ msgstr "智能选节点：%s"
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core.js
 msgid "Latest alpha package: %s"
 msgstr "最新 Alpha 包：%s"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Version Management"
+msgstr "版本管理"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "SBProxy plugin"
+msgstr "SBProxy 插件"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "sing-box core"
+msgstr "sing-box 核心"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Update SBProxy and its core without updating the router firmware."
+msgstr "无需更新路由器系统，即可升级 SBProxy 插件和核心。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Updates the plugin and its installed Chinese language pack. Your settings are preserved."
+msgstr "升级插件及已安装的中文语言包，保留现有配置。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Choose a stable or Alpha core built with SBProxy compatibility patches."
+msgstr "选择包含 SBProxy 兼容补丁的稳定版或 Alpha 核心。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Current version: %s"
+msgstr "当前版本：%s"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Latest version: %s"
+msgstr "最新版本：%s"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Stable: %s · Alpha: %s"
+msgstr "稳定版：%s · Alpha：%s"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "No available versions"
+msgstr "暂无可用版本"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Install %s %s?"
+msgstr "确认安装 %s %s？"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Reinstall"
+msgstr "重新安装"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Update"
+msgstr "升级"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Last update: %s — %s"
+msgstr "最近任务：%s — %s"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Update progress"
+msgstr "升级进度"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Preparing the update..."
+msgstr "正在准备升级…"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Querying published packages..."
+msgstr "正在查询发布版本…"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Downloading packages..."
+msgstr "正在下载软件包…"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Installing packages..."
+msgstr "正在安装软件包…"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Checking service health..."
+msgstr "正在检查服务状态…"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Restoring the previous version..."
+msgstr "正在恢复原版本…"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Connection interrupted. Waiting for the router to reconnect; the update may still be running..."
+msgstr "连接暂时中断，正在等待路由器恢复；升级可能仍在进行…"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "The previous version was restored automatically."
+msgstr "已自动恢复原版本。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "SBProxy was updated to %s successfully."
+msgstr "SBProxy 已成功升级至 %s。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Select the current or a newer SBProxy version."
+msgstr "请选择当前或更新的 SBProxy 版本。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "The plugin update failed; the previous version and configuration were restored."
+msgstr "插件升级失败，已恢复原版本和配置。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "The plugin update and automatic recovery failed. Check the update log."
+msgstr "插件升级及自动恢复均失败，请查看升级日志。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Unable to check for updates. Please try again."
+msgstr "无法检查更新，请重试。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Online updates are not available on this architecture."
+msgstr "当前架构不支持在线升级。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Not enough persistent storage is available for this update."
+msgstr "持久存储空间不足，无法完成升级。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "The installed package is no longer available in the trusted release, so recovery cannot be prepared."
+msgstr "发布仓库已不再保留当前软件包，无法准备恢复包。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Another update is already in progress."
+msgstr "已有其他升级任务正在进行。"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "This firmware cannot start an isolated update worker."
+msgstr "当前固件无法启动独立的升级任务。"

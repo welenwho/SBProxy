@@ -5084,3 +5084,135 @@ msgstr ""
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core.js
 msgid "Latest alpha package: %s"
 msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Version Management"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "SBProxy plugin"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "sing-box core"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Update SBProxy and its core without updating the router firmware."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Updates the plugin and its installed Chinese language pack. Your settings are preserved."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Choose a stable or Alpha core built with SBProxy compatibility patches."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Current version: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Latest version: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Stable: %s · Alpha: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "No available versions"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Install %s %s?"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Reinstall"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Update"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Last update: %s — %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Update progress"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Preparing the update..."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Querying published packages..."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Downloading packages..."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Installing packages..."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Checking service health..."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Restoring the previous version..."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Connection interrupted. Waiting for the router to reconnect; the update may still be running..."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "The previous version was restored automatically."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "SBProxy was updated to %s successfully."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Select the current or a newer SBProxy version."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "The plugin update failed; the previous version and configuration were restored."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "The plugin update and automatic recovery failed. Check the update log."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Unable to check for updates. Please try again."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Online updates are not available on this architecture."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Not enough persistent storage is available for this update."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "The installed package is no longer available in the trusted release, so recovery cannot be prepared."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Another update is already in progress."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "This firmware cannot start an isolated update worker."
+msgstr ""

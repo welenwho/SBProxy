@@ -429,6 +429,24 @@ const methods = {
 		}
 	},
 
+	plugin_check_update: {
+		call: function() {
+			return coreManagerCall('plugin-check');
+		}
+	},
+
+	plugin_upgrade: {
+		args: { target: 'target', operation_id: '' },
+		call: function(req) {
+			const target = trim(req.args?.target || '');
+			const id = trim(req.args?.operation_id || '');
+			if (!match(target, /^luci-app-sbproxy-[0-9]+\.[0-9]+\.[0-9]+-r[1-9][0-9]*\.apk$/) ||
+			    !match(id, /^[a-f0-9]{32}$/))
+				return { code: 2, error_code: 'invalid_target' };
+			return coreManagerCall('start-plugin-upgrade', target, id);
+		}
+	},
+
 	core_operation_status: {
 		args: { operation_id: '' },
 		call: function(req) {

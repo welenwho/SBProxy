@@ -24,14 +24,41 @@ class CoreJobTests(unittest.TestCase):
             shim = self.root / 'flock'
             shim.write_text('''#!/usr/bin/env python3
 import fcntl, os, sys
-arg = sys.argv[2]
+args = sys.argv[1:]
+mode = fcntl.LOCK_EX
+if '-n' in args:
+    args.remove('-n'); mode |= fcntl.LOCK_NB
+if '-u' in args:
+    args.remove('-u'); mode = fcntl.LOCK_UN
+arg = args[0]
 fd = int(arg) if arg.isdigit() else os.open(arg, os.O_CREAT | os.O_RDWR, 0o600)
 try:
-    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fcntl.flock(fd, mode)
 except (BlockingIOError, OSError):
     sys.exit(1)
 ''')
             shim.chmod(0o755)
+            self.env['PATH'] = str(self.root) + os.pathsep + self.env['PATH']
+        shim = self.root / 'ubus'
+        shim.write_text('#!/usr/bin/env python3\n' + f'''
+import json,os,subprocess,sys
+from pathlib import Path
+pidfile=Path({str(self.root / 'procd.pid')!r})
+if sys.argv[3] == 'add':
+    command=json.loads(sys.argv[4])['instances']['worker']['command']
+    child=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True)
+    pidfile.write_text(str(child.pid))
+elif sys.argv[3] == 'list':
+    running=False
+    if pidfile.exists():
+        try:
+            state=subprocess.check_output(['ps','-o','stat=','-p',pidfile.read_text()],stderr=subprocess.DEVNULL,text=True).strip()
+            running=bool(state) and not state.startswith('Z')
+        except Exception: pass
+    print(json.dumps({{'fixture':{{'instances':{{'worker':{{'running':running}}}}}}}}))
+''')
+        shim.chmod(0o755)
+        if str(self.root) not in self.env['PATH'].split(os.pathsep):
             self.env['PATH'] = str(self.root) + os.pathsep + self.env['PATH']
         source = MANAGER.read_text()
         for variable, path in [('STATE_DIR', 'core'), ('JOB_DIR', 'jobs'),
@@ -57,6 +84,7 @@ upgrade_core() {
     emit package_version 1.14.0-r2
 }
 '''
+        fake += '\nupgrade_plugin() { upgrade_core \"$@\"; emit component plugin; }\n'
         self.script = self.root / 'manager'
         self.script.write_text(prefix + fake + 'action="${1:-status}"' + main)
         self.script.chmod(0o755)
@@ -130,6 +158,31 @@ upgrade_core() {
         status = self.wait_terminal()
         self.assertEqual(status['operation_state'], 'unknown')
         self.assertNotIn('upgraded', status)
+
+    def test_plugin_and_core_share_lock_and_worker_survives_self_replacement(self):
+        result = self.start(action='plugin-upgrade', target='luci-app-sbproxy-1.0.1-r39.apk')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('operation_in_progress', self.start(id='b' * 32).stdout)
+        self.assertTrue((self.root / 'jobs/worker').exists())
+        pid_file = self.root / 'jobs/worker-pid'
+        for _ in range(100):
+            if pid_file.exists():
+                break
+            time.sleep(0.01)
+        pid = int(pid_file.read_text())
+        self.assertNotEqual(os.getsid(pid), os.getsid(0), 'Worker must survive caller session termination')
+        # Simulate APK overwriting the installed manager during its own update.
+        original = self.script.read_text()
+        self.script.write_text('#!/bin/sh\nexit 99\n')
+        (self.root / 'jobs/allow-finish').touch()
+        for _ in range(100):
+            status = (self.root / 'jobs/status').read_text()
+            if 'operation_state=succeeded' in status:
+                break
+            time.sleep(0.03)
+        self.script.write_text(original)
+        self.assertIn('operation_state=succeeded', status)
+        self.assertIn('component=plugin', status)
 
     def test_validation_before_detach(self):
         for args in [dict(id='../untrusted'), dict(target='../../untrusted')]:

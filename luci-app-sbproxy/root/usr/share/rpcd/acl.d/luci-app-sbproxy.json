@@ -12,7 +12,7 @@
 				"service": [ "list" ],
 				"luci-rpc": [ "getHostHints" ],
 				"luci.sbproxy": [
-					"acllist_read", "connection_check", "core_check_update", "core_status", "core_operation_status", "current_node_get", "ingress_status",
+					"acllist_read", "connection_check", "core_check_update", "core_status", "core_operation_status", "plugin_check_update", "current_node_get", "ingress_status",
 					"node_latency_test", "resources_get", "tailscale_peer_details", "tailscale_status",
 					"singbox_generator", "singbox_get_features"
 				]
@@ -27,7 +27,7 @@
 			"ubus": {
 				"luci.sbproxy": [
 					"acllist_write", "certificate_write", "log_clean", "resources_update",
-					"core_rollback", "core_upgrade", "tailscale_logout", "tailscale_ping"
+					"core_rollback", "core_upgrade", "plugin_upgrade", "tailscale_logout", "tailscale_ping"
 				]
 			},
 			"uci": [ "sbproxy" ]

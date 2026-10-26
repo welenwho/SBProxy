@@ -26,6 +26,7 @@ jobs:
           node luci-app-sbproxy/tests/test-diversion-frontend.mjs
           node luci-app-sbproxy/tests/test-diversion-fields-ui.mjs
           node luci-app-sbproxy/tests/test-core-operation-ui.mjs
+          node luci-app-sbproxy/tests/test-version-management-ui.mjs
       - name: Core health, rollback, ingress and resource transaction tests
         run: |
           set -e
