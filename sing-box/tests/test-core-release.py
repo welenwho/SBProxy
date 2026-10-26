@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import importlib.util
+import io
 import json
 import os
 import re
@@ -7,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import tarfile
 import unittest
 from unittest.mock import patch
 
@@ -78,13 +80,92 @@ class CoreReleaseTests(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/Update-Sing-Box.yml').read_text()
         queue = (ROOT / '.github/workflows/Daily-Maintenance-Queue.yml').read_text()
         self.assertIn('core-release.py retain', workflow)
-        self.assertNotIn('--latest=false', workflow)
+        self.assertIn('--prerelease --latest=false', workflow)
         self.assertIn('--latest', workflow)
         self.assertIn('--title "SBProxy core $VERSION"', workflow)
         self.assertNotIn('$VERSION-r$REVISION', workflow)
         self.assertIn("cron: '17 18 * * *'", queue)
         self.assertIn("cron: '47 6 * * *'", queue)
         self.assertNotIn("cron: '0 18 * * *'", queue)
+        self.assertIn('channel: alpha', queue)
+
+    def test_alpha_channel_selects_numeric_latest_and_never_pins(self):
+        upstream = [dict(tag_name='v' + v, draft=False, prerelease=True) for v in
+                    ('1.15.0-alpha.9', '1.15.0-alpha.12', '1.15.0-rc.1')]
+        upstream += [dict(tag_name='v1.15.0-alpha.99', draft=True, prerelease=True)]
+        with patch.object(core, 'api', return_value=upstream), \
+             patch.object(core, 'releases', return_value=[]), \
+             patch.object(core, 'output') as out:
+            core.resolve('alpha')
+        self.assertEqual(out.call_args.kwargs['version'], '1.15.0-alpha.12')
+        self.assertEqual(out.call_args.kwargs['build'], 'true')
+        self.assertEqual(out.call_args.kwargs['publish_needed'], 'true')
+        self.assertEqual(out.call_args.kwargs['pin_needed'], 'false')
+
+    def test_published_alpha_is_immutable(self):
+        release = dict(tag_name='sbproxy-core-v1.15.0-alpha.12', draft=False, prerelease=True)
+        upstream = [dict(tag_name='v1.15.0-alpha.12', draft=False, prerelease=True)]
+        for fingerprint in ('old', core.fingerprint()):
+            with patch.object(core, 'api', return_value=upstream), \
+                 patch.object(core, 'releases', return_value=[release]), \
+                 patch.object(core, 'manifest_of', return_value=dict(fingerprint=fingerprint)), \
+                 patch.object(core, 'output') as out:
+                core.resolve('alpha')
+            self.assertEqual(out.call_args.kwargs['build'], 'false')
+            self.assertEqual(out.call_args.kwargs['publish_needed'], 'false')
+            self.assertEqual(out.call_args.kwargs['pin_needed'], 'false')
+
+    def test_alpha_names_and_ordering(self):
+        self.assertEqual(core.apk_version('1.15.0-alpha.12'), '1.15.0_alpha12')
+        self.assertEqual(core.parse_core_tag('sbproxy-core-v1.15.0-alpha.12'), ('1.15.0-alpha.12', None))
+        tags = ['sbproxy-core-v1.15.0-alpha.9', 'sbproxy-core-v1.15.0-alpha.12', 'sbproxy-core-v1.15.0']
+        self.assertEqual(core.select_retained(tags)[0], list(reversed(tags)))
+        for invalid in ('1.15.0-alpha.0', '1.15.0-alpha.x', '../../bad', '1.15.0-rc.1'):
+            with self.assertRaises(ValueError):
+                core.apk_version(invalid)
+
+    def test_retention_keeps_channels_separate_and_only_stable_latest(self):
+        published = [dict(tag_name=f'sbproxy-core-v1.14.{i}', prerelease=False) for i in range(7)]
+        published += [dict(tag_name=f'sbproxy-core-v1.15.0-alpha.{i}', prerelease=True) for i in range(1, 8)]
+        with patch.object(core, 'releases', return_value=published), \
+             patch.object(core, 'read_pin', return_value={}), \
+             patch.object(core.subprocess, 'run') as run:
+            core.retain()
+        deleted = [c.args[0][3] for c in run.call_args_list if c.args[0][2] == 'delete']
+        self.assertEqual(set(deleted), {'sbproxy-core-v1.14.0', 'sbproxy-core-v1.14.1',
+                                       'sbproxy-core-v1.15.0-alpha.1', 'sbproxy-core-v1.15.0-alpha.2'})
+        self.assertEqual(run.call_args.args[0][3], 'sbproxy-core-v1.14.6')
+
+    def test_alpha_cannot_be_pinned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'manifest.json'
+            path.write_text(json.dumps(dict(version='1.15.0-alpha.12', revision=1)))
+            with self.assertRaisesRegex(ValueError, 'stable firmware pin'):
+                core.pin(path)
+
+    def test_prepare_alpha_keeps_upstream_tag_but_normalizes_apk_version(self):
+        version = '1.15.0-alpha.12'
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'sing-box').mkdir()
+            makefile = root / 'sing-box/Makefile'
+            makefile.write_text(MAKEFILE)
+            archive = root / 'sbproxy-core-source.tar.gz'
+            with tarfile.open(archive, 'w:gz') as tar:
+                data = b'require github.com/sagernet/tailscale v1.2.3-alpha-dependency\n'
+                member = tarfile.TarInfo(f'sing-box-{version}/go.mod')
+                member.size = len(data)
+                tar.addfile(member, io.BytesIO(data))
+            with patch.object(core, 'ROOT', root), \
+                 patch.dict(os.environ, RUNNER_TEMP=tmp), \
+                 patch.object(core.subprocess, 'run') as download:
+                core.prepare(version, '1')
+            prepared = makefile.read_text()
+            self.assertIn('PKG_UPSTREAM_VERSION:=1.15.0-alpha.12\n', prepared)
+            self.assertIn('PKG_VERSION:=1.15.0_alpha12\n', prepared)
+            self.assertIn('TAILSCALE_MODULE_VERSION:=v1.2.3-alpha-dependency\n', prepared)
+            self.assertIn('https://codeload.github.com/SagerNet/sing-box/tar.gz/v1.15.0-alpha.12',
+                          download.call_args.args[0])
 
     def test_published_version_is_not_rebuilt_with_revision(self):
         release = dict(tag_name='sbproxy-core-v1.14.3', draft=False, prerelease=False,

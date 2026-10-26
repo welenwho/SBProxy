@@ -5080,3 +5080,7 @@ msgstr ""
 
 msgid "Smart selection: %s"
 msgstr ""
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Latest alpha package: %s"
+msgstr ""

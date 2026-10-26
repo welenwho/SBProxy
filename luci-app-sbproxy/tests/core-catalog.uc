@@ -10,6 +10,10 @@ const name = 'sing-box-1.14.0-r2-arm64.apk';
 const url = `https://github.com/welenwho/packages/releases/download/${tag}/${name}`;
 const digest = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const good = { name, browser_download_url: url, digest, size: 128, created_at: '2026-09-08' };
+const alphaTag = 'sbproxy-core-v1.15.0-alpha.12';
+const alphaName = 'sing-box-1.15.0-alpha.12-arm64.apk';
+const alpha = { ...good, name: alphaName,
+	browser_download_url: `https://github.com/welenwho/SBProxy/releases/download/${alphaTag}/${alphaName}` };
 const cases = [
 	[{ tag_name: tag, assets: [good] }, true],
 	[{ tag_name: 'sbproxy-core-v1.14.3', assets: [{
@@ -20,6 +24,14 @@ const cases = [
 	[{ tag_name: 'sbproxy-core-v1.14.3', assets: [good] }, false],
 	[{ tag_name: tag, draft: true, assets: [good] }, false],
 	[{ tag_name: tag, prerelease: true, assets: [good] }, false],
+	[{ tag_name: alphaTag, prerelease: true, assets: [alpha] }, true],
+	[{ tag_name: alphaTag, prerelease: false, assets: [alpha] }, false],
+	[{ tag_name: alphaTag, prerelease: true, draft: true, assets: [alpha] }, false],
+	[{ tag_name: alphaTag, prerelease: true, assets: [{ ...alpha, digest: null }] }, false],
+	[{ tag_name: alphaTag, prerelease: true, assets: [{ ...alpha,
+		browser_download_url: replace(alpha.browser_download_url, 'welenwho', 'untrusted') }] }, false],
+	[{ tag_name: alphaTag, prerelease: true, assets: [{ ...alpha,
+		name: 'sing-box-1.15.0-alpha.13-arm64.apk' }] }, false],
 	[{ tag_name: 'apk-packages-arm64', assets: [good] }, false],
 	[{ tag_name: tag, assets: [{ ...good, digest: null }] }, false],
 	[{ tag_name: tag, assets: [{ ...good, browser_download_url: 'https://example.org/core.apk' }] }, false],

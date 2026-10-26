@@ -5211,3 +5211,7 @@ msgstr "切换容差，单位为毫秒，默认 75。"
 
 msgid "Smart selection: %s"
 msgstr "智能选节点：%s"
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "Latest alpha package: %s"
+msgstr "最新 Alpha 包：%s"

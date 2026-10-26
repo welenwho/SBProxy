@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REPO = 'welenwho/packages'
 KEEP_RELEASES = 5
 # Published names use the upstream version. Legacy tags may still end in -rN.
-CORE_TAG = re.compile(r'^sbproxy-core-v(\d+)\.(\d+)\.(\d+)(?:-r([1-9]\d*))?$')
+VERSION = r'\d+\.\d+\.\d+(?:-alpha\.[1-9]\d*)?'
+CORE_TAG = re.compile(r'^sbproxy-core-v(' + VERSION + r')(?:-r([1-9]\d*))?$')
 TAGS = ['with_acme', 'with_clash_api', 'with_dhcp', 'with_gvisor',
         'with_quic', 'with_tailscale', 'with_utls', 'with_wireguard']
 
@@ -71,8 +72,8 @@ def parse_core_tag(tag):
     match = CORE_TAG.fullmatch(tag or '')
     if not match:
         return None
-    version = f'{match[1]}.{match[2]}.{match[3]}'
-    revision = int(match[4]) if match[4] else None
+    version = match[1]
+    revision = int(match[2]) if match[2] else None
     return version, revision
 
 
@@ -81,7 +82,19 @@ def core_tag_key(tag):
     if not parsed:
         return None
     version, revision = parsed
-    return tuple(int(part) for part in version.split('.')) + (revision or 0,)
+    base, _, alpha = version.partition('-alpha.')
+    return tuple(int(part) for part in base.split('.')) + (0 if alpha else 1, int(alpha or 0), revision or 0)
+
+
+def version_channel(version):
+    if not re.fullmatch(VERSION, version):
+        raise ValueError('Invalid core version')
+    return 'alpha' if '-alpha.' in version else 'stable'
+
+
+def apk_version(version):
+    version_channel(version)
+    return version.replace('-alpha.', '_alpha')
 
 
 def select_retained(tags, keep=KEEP_RELEASES, protected=()):
@@ -102,11 +115,20 @@ def select_retained(tags, keep=KEEP_RELEASES, protected=()):
 
 def retain(keep=KEEP_RELEASES):
     keep = int(keep)
-    tags = [release.get('tag_name') or '' for release in releases()
-            if not release.get('draft') and not release.get('prerelease')]
+    published = [release for release in releases() if not release.get('draft')]
     pin = read_pin().get('CORE_PIN_VERSION', '')
     protected = [f'sbproxy-core-v{pin}'] if core_tag_key(f'sbproxy-core-v{pin}') else []
-    kept, stale, newest = select_retained(tags, keep, protected)
+    kept, stale, newest = [], [], ''
+    for channel in ('stable', 'alpha'):
+        tags = [release.get('tag_name') or '' for release in published
+                if (parsed := parse_core_tag(release.get('tag_name'))) and
+                version_channel(parsed[0]) == channel and
+                bool(release.get('prerelease')) == (channel == 'alpha')]
+        channel_kept, channel_stale, channel_newest = select_retained(tags, keep, protected)
+        kept.extend(channel_kept)
+        stale.extend(channel_stale)
+        if channel == 'stable':
+            newest = channel_newest
     repo = os.environ.get('GITHUB_REPOSITORY', REPO)
     for tag in stale:
         subprocess.run(['gh', 'release', 'delete', tag, '--repo', repo,
@@ -130,11 +152,23 @@ def public_version(version, revision, manifest=None):
     return f'{version}-r{revision}' if revision else version
 
 
-def resolve():
-    upstream = api('repos/SagerNet/sing-box/releases/latest')
+def resolve(channel='stable'):
+    if channel not in ('stable', 'alpha'):
+        raise ValueError('Invalid core channel')
+    if channel == 'stable':
+        upstream = api('repos/SagerNet/sing-box/releases/latest')
+    else:
+        candidates = [release for release in api('repos/SagerNet/sing-box/releases?per_page=100')
+                      if not release.get('draft') and release.get('prerelease') and
+                      re.fullmatch(r'v\d+\.\d+\.\d+-alpha\.[1-9]\d*', release.get('tag_name', ''))]
+        if not candidates:
+            raise ValueError('No upstream alpha release found')
+        upstream = max(candidates, key=lambda release: core_tag_key('sbproxy-core-' + release['tag_name']))
     tag = upstream['tag_name']
-    if upstream['draft'] or upstream['prerelease'] or not re.fullmatch(r'v\d+\.\d+\.\d+', tag):
-        raise ValueError('Not a stable upstream release')
+    if (upstream['draft'] or not tag.startswith('v') or
+            version_channel(tag[1:]) != channel or
+            bool(upstream['prerelease']) != (channel == 'alpha')):
+        raise ValueError('Upstream release does not match the selected channel')
     version = tag[1:]
     source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     fp = fingerprint()
@@ -142,7 +176,8 @@ def resolve():
     published = []
     for release in releases():
         parsed = parse_core_tag(release.get('tag_name'))
-        if not parsed or parsed[0] != version or release.get('draft') or release.get('prerelease'):
+        if (not parsed or parsed[0] != version or release.get('draft') or
+                bool(release.get('prerelease')) != (channel == 'alpha')):
             continue
         manifest = manifest_of(release)
         if manifest:
@@ -154,8 +189,10 @@ def resolve():
         identity = public_version(version, revision or None, manifest)
         output(build='false', tag=release['tag_name'], version=version,
                revision=revision or 1, source_sha=source_sha, fingerprint=fp,
-               pin_needed=str(pin.get('CORE_PIN_VERSION') != identity or
-                              pin.get('CORE_FINGERPRINT') != fp).lower())
+               publish_needed=str(channel == 'stable' and (pin.get('CORE_PIN_VERSION') != identity or
+                                  pin.get('CORE_FINGERPRINT') != fp)).lower(),
+               pin_needed=str(channel == 'stable' and (pin.get('CORE_PIN_VERSION') != identity or
+                              pin.get('CORE_FINGERPRINT') != fp)).lower())
         return
     if published:
         # One published name per upstream version. A later build-input change
@@ -165,16 +202,17 @@ def resolve():
         same = manifest.get('fingerprint') == fp
         output(build='false', tag=release['tag_name'], version=version,
                revision=revision or 1, source_sha=source_sha, fingerprint=fp,
-               pin_needed=str(same and (pin.get('CORE_PIN_VERSION') != identity or
+               publish_needed='false',
+               pin_needed=str(channel == 'stable' and same and (pin.get('CORE_PIN_VERSION') != identity or
                                         pin.get('CORE_FINGERPRINT') != fp)).lower())
         return
     # OpenWrt still needs PKG_RELEASE. It is not part of the published name.
-    output(build='true', pin_needed='true', version=version, revision=1,
+    output(build='true', publish_needed='true', pin_needed=str(channel == 'stable').lower(), version=version, revision=1,
            tag=f'sbproxy-core-v{version}', source_sha=source_sha, fingerprint=fp)
 
 
 def prepare(version, revision, expected_hash=''):
-    if not re.fullmatch(r'\d+\.\d+\.\d+', version) or not re.fullmatch(r'[1-9]\d*', revision):
+    if not re.fullmatch(VERSION, version) or not re.fullmatch(r'[1-9]\d*', revision):
         raise ValueError('Invalid build version')
     archive = Path(os.environ['RUNNER_TEMP']) / 'sbproxy-core-source.tar.gz'
     subprocess.run(['curl', '-fsSL', '--retry', '3',
@@ -185,7 +223,7 @@ def prepare(version, revision, expected_hash=''):
         raise ValueError('Upstream source archive changed since the core build')
     path = ROOT / 'sing-box/Makefile'
     content = path.read_text()
-    for key, value in {'PKG_UPSTREAM_VERSION': version, 'PKG_VERSION': version,
+    for key, value in {'PKG_UPSTREAM_VERSION': version, 'PKG_VERSION': apk_version(version),
                        'PKG_RELEASE': revision, 'PKG_HASH': source_hash}.items():
         content = re.sub(r'^' + key + r':=.*$', key + ':=' + value, content, count=1, flags=re.M)
     # Derive the dependency version from this exact upstream tag, not a stale
@@ -215,6 +253,7 @@ def assemble(directory, version, revision, fp, source_sha):
         assets.append(metadata)
     manifest = dict(schema=1, repository=REPO, profile='sbproxy',
                     version=version, revision=int(revision), package_version=version,
+                    channel=version_channel(version), apk_package_version=f'{apk_version(version)}-r{revision}',
                     upstream_tag=f'v{version}', source_sha=source_sha, fingerprint=fp,
                     required_tags=TAGS, patches=['tailscale-route-api', 'tailscale-linux-policy-routing'],
                     builds=assets)
@@ -230,6 +269,8 @@ def assemble(directory, version, revision, fp, source_sha):
 def pin(manifest_path):
     manifest = json.loads(Path(manifest_path).read_text())
     version, revision = manifest['version'], str(manifest['revision'])
+    if version_channel(version) != 'stable':
+        raise ValueError('Alpha releases must not replace the stable firmware pin')
     if manifest['repository'] != REPO or manifest['profile'] != 'sbproxy':
         raise ValueError('Unexpected core manifest')
     # A concurrent source change must never be pinned to an older artifact.

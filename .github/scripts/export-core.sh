@@ -11,9 +11,10 @@ arch="$4"
 version="$5"
 revision="$6"
 [[ "$arch" == arm64 || "$arch" == amd64 ]]
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$revision" =~ ^[1-9][0-9]*$ ]]
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[1-9][0-9]*)?$ && "$revision" =~ ^[1-9][0-9]*$ ]]
 apk="$sdk/staging_dir/host/bin/apk"
-package="$apk_output/sing-box-$version-r$revision.apk"
+package_version="${version/-alpha./_alpha}"
+package="$apk_output/sing-box-$package_version-r$revision.apk"
 # The SDK package keeps OpenWrt's release number. Published names do not.
 name="sing-box-$version-linux-$arch"
 mkdir -p "$output/$name/release/config"

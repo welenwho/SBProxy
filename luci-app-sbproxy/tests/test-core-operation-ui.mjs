@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 
 const source = fs.readFileSync(new URL('../htdocs/luci-static/resources/view/sbproxy/core.js', import.meta.url), 'utf8');
+const sortSource = source.slice(source.indexOf('function sortCoreAssets('), source.indexOf('\n}', source.indexOf('function sortCoreAssets(')) + 2);
+const sortAssets = Function(sortSource + '; return sortCoreAssets;')();
+assert.deepEqual(sortAssets(['1.15.0-alpha.9', '1.14.3', '1.15.0-alpha.12', '1.14.10']
+  .map(package_version => ({ package_version }))).map(a => a.package_version),
+  ['1.14.10', '1.14.3', '1.15.0-alpha.12', '1.15.0-alpha.9']);
 String.prototype.format = function(...args) { let i = 0; return this.replace(/%s/g, () => args[i++]); };
 const id = 'a'.repeat(32);
 const running = { operation_id: id, operation_state: 'running', operation_stage: 'restarting' };

@@ -20,14 +20,14 @@ def executable(path, text):
 
 
 class ExportTests(unittest.TestCase):
-    def export(self, failure=''):
+    def export(self, failure='', version='1.14.0'):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fixture = root / 'fixture'
             executable(fixture / 'usr/bin/sing-box', '''
 case "$1" in
 version)
-  echo 'sing-box version 1.14.0'
+  echo "sing-box version $TEST_VERSION"
   echo 'Tags: with_acme,with_clash_api,with_dhcp,with_gvisor,with_quic,with_tailscale,with_utls'
   [ "$FAILURE" = tags ] || echo 'with_wireguard'
   ;;
@@ -48,7 +48,7 @@ if [ "$FAILURE" = dynamic ]; then echo 'INTERP NEEDED'; else echo 'No dynamic de
             source = root / 'sbproxy-core-source.tar.gz'
             with tarfile.open(source, 'w:gz') as archive:
                 data = b'GPL-3.0-or-later test license\n'
-                info = tarfile.TarInfo('sing-box-1.14.0/LICENSE')
+                info = tarfile.TarInfo(f'sing-box-{version}/LICENSE')
                 info.size = len(data)
                 archive.addfile(info, io.BytesIO(data))
             checksum = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -62,24 +62,28 @@ if [ "$FAILURE" = dynamic ]; then echo 'INTERP NEEDED'; else echo 'No dynamic de
             shutil.copy(ROOT / '.github/scripts/core-release.py', scripts)
             apk_output = root / 'apk-output'
             apk_output.mkdir()
-            (apk_output / 'sing-box-1.14.0-r2.apk').write_bytes(b'fake package')
+            (apk_output / ('sing-box-' + version.replace('-alpha.', '_alpha') + '-r2.apk')).write_bytes(b'fake package')
             output = root / 'out'
             env = dict(os.environ, FIXTURE=str(fixture), FAILURE=failure,
                        RUNNER_TEMP=tmp, CORE_SOURCE_SHA='a' * 40,
-                       PATH=str(root / 'bin') + ':' + os.environ['PATH'])
+                       TEST_VERSION=version, PATH=str(root / 'bin') + ':' + os.environ['PATH'])
             result = subprocess.run(['bash', str(ROOT / '.github/scripts/export-core.sh'),
-                                     str(sdk), str(apk_output), str(output), 'amd64', '1.14.0', '2'],
+                                     str(sdk), str(apk_output), str(output), 'amd64', version, '2'],
                                     cwd=root, env=env, capture_output=True, text=True)
             if not failure:
                 self.assertTrue((output / 'core-amd64.json').is_file(), result.stdout + result.stderr)
-                with tarfile.open(output / 'sing-box-1.14.0-linux-amd64.tar.gz') as archive:
-                    self.assertEqual(archive.extractfile('sing-box-1.14.0-linux-amd64/LICENSE').read(), data)
-                self.assertTrue((output / 'sing-box-1.14.0-amd64.apk').is_file())
-                self.assertFalse((output / 'sing-box-1.14.0-r2-amd64.apk').exists())
+                with tarfile.open(output / f'sing-box-{version}-linux-amd64.tar.gz') as archive:
+                    self.assertEqual(archive.extractfile(f'sing-box-{version}-linux-amd64/LICENSE').read(), data)
+                self.assertTrue((output / f'sing-box-{version}-amd64.apk').is_file())
+                self.assertFalse((output / f'sing-box-{version}-r2-amd64.apk').exists())
             return result
 
     def test_export_after_sdk_source_cleanup(self):
         result = self.export()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_alpha_export_uses_apk_name_and_preserves_upstream_version(self):
+        result = self.export(version='1.15.0-alpha.12')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_dynamic_core_rejected(self):

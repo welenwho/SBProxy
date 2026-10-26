@@ -443,7 +443,7 @@ const methods = {
 		args: { target: 'target', operation_id: '' },
 		call: function(req) {
 			const target = trim(req.args?.target || '');
-			if (!match(target, /^sing-box-[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+\.apk$/))
+			if (!match(target, /^sing-box-[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[1-9][0-9]*)?(-r[1-9][0-9]*)?\.apk$/))
 				return { code: 2, error_code: 'invalid_target', error: 'Invalid core package selection.' };
 			const id = trim(req.args?.operation_id || '');
 			if (!match(id, /^[a-f0-9]{32}$/))
@@ -456,7 +456,7 @@ const methods = {
 		args: { target: 'target', operation_id: '' },
 		call: function(req) {
 			const target = trim(req.args?.target || '');
-			if (!match(target, /^sing-box-[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+\.apk$/))
+			if (!match(target, /^sing-box-[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[1-9][0-9]*)?(-r[1-9][0-9]*)?\.apk$/))
 				return { code: 2, error_code: 'invalid_target', error: 'Invalid core package selection.' };
 			const id = trim(req.args?.operation_id || '');
 			if (!match(id, /^[a-f0-9]{32}$/))

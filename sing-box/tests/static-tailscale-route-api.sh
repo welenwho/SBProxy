@@ -25,8 +25,8 @@ grep -Fq '$(GO_BIN_PATH) $(GO_PKG_BUILD_VARS) go mod download $(GO_MOD_ARGS) $(T
 grep -Fq '$(call PatchDir,$(PKG_BUILD_DIR)/third_party/tailscale,./tailscale-patches,)' "$MAKEFILE"
 grep -Fq '$(GO_BIN_PATH) $(GO_PKG_BUILD_VARS) go mod edit' "$MAKEFILE"
 grep -Fq -- '-replace github.com/sagernet/tailscale=./third_party/tailscale' "$MAKEFILE"
-grep -Fq "upstream['draft'] or upstream['prerelease']" "$WORKFLOW"
-grep -Fq "re.fullmatch(r'v\d+\.\d+\.\d+', tag)" "$WORKFLOW"
+grep -Fq "version_channel(tag[1:]) != channel" "$WORKFLOW"
+grep -Fq "Alpha releases must not replace the stable firmware pin" "$WORKFLOW"
 
 golang_include_line="$(grep -nF 'include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk' "$MAKEFILE" | cut -d: -f1)"
 module_dir_line="$(grep -nF 'TAILSCALE_MODULE_DIR:=$(GO_MOD_CACHE_DIR)/github.com/sagernet/tailscale@$(TAILSCALE_MODULE_VERSION)' "$MAKEFILE" | cut -d: -f1)"

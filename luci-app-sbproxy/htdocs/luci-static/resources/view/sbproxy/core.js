@@ -8,6 +8,15 @@
 'require ui';
 'require view';
 
+function sortCoreAssets(assets) {
+	return assets.slice().sort((a, b) => {
+		const alphaA = /-alpha\./.test(a.package_version);
+		const alphaB = /-alpha\./.test(b.package_version);
+		return Number(alphaA) - Number(alphaB) ||
+			b.package_version.localeCompare(a.package_version, undefined, { numeric: true });
+	});
+}
+
 const callCoreStatus = rpc.declare({
 	object: 'luci.sbproxy',
 	method: 'core_status',
@@ -380,11 +389,11 @@ return view.extend({
 						dom.content(updateInfo, E('span', { 'style': 'color:red' }, [ resultMessage(result) ]));
 						return;
 					}
-					const versions = (result.assets || []).sort((a, b) =>
-						b.package_version.localeCompare(a.package_version, undefined, { numeric: true }));
+					const versions = sortCoreAssets(result.assets || []);
 					dom.content(selector, versions.length ? versions.map((asset) => E('option', {
 						'value': asset.filename
-					}, [ _('%s · %s · %s').format(asset.package_version,
+					}, [ _('%s · %s · %s').format(asset.package_version +
+						(/-alpha\./.test(asset.package_version) ? ' (Alpha)' : ''),
 						formatBytes(asset.size), formatDate(asset.created_at)) ])) :
 						E('option', { 'value': '' }, [ _('No published compatible core versions were found.') ]));
 					selector.disabled = !versions.length;
@@ -394,7 +403,10 @@ return view.extend({
 					};
 					selector.onchange = selectionChanged;
 					selectionChanged();
-					dom.content(updateInfo, _('Latest stable package: %s').format(result.latest_package_version || '-'));
+					dom.content(updateInfo, [
+						_('Latest stable package: %s').format(result.latest_package_version || '-'),
+						' · ', _('Latest alpha package: %s').format(result.latest_alpha_package_version || '-')
+					]);
 				}).finally(() => {
 					checking = false;
 					this.refreshButtons();

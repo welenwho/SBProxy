@@ -29,9 +29,18 @@ jobs:
     with:
       build_apks: false
 
+  singbox_alpha:
+    name: Sing-Box Alpha 更新
+    needs: singbox
+    if: ${{ always() }}
+    uses: ./.github/workflows/Update-Sing-Box.yml
+    with:
+      channel: alpha
+      build_apks: false
+
   sbproxy:
     name: SBProxy 更新
-    needs: singbox
+    needs: [singbox, singbox_alpha]
     if: ${{ always() }}
     uses: ./.github/workflows/Update-SBProxy.yml
     with:

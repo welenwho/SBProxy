@@ -5,6 +5,7 @@ Nothing is installed and no real router paths are accessed.
 """
 from pathlib import Path
 import shlex
+import re
 import subprocess
 import tempfile
 import unittest
@@ -13,6 +14,24 @@ MANAGER = Path(__file__).resolve().parents[1] / 'root/usr/libexec/sbproxy-core-m
 
 
 class CoreSwitchTests(unittest.TestCase):
+    def test_rpc_and_installer_accept_the_same_release_names(self):
+        rpc = (MANAGER.parents[1] / 'share/rpcd/ucode/luci.sbproxy').read_text()
+        patterns = [p for p in re.findall(r'match\(target, /(.*)/\)', rpc) if p.startswith('^sing-box-')]
+        self.assertEqual(len(patterns), 2)
+        for name, valid in [('sing-box-1.14.4.apk', True),
+                            ('sing-box-1.14.0-r2.apk', True),
+                            ('sing-box-1.15.0-alpha.12.apk', True),
+                            ('sing-box-1.15.0-alpha.12-r1.apk', True),
+                            ('sing-box-1.15.0-rc.1.apk', False),
+                            ('../../sing-box-1.15.0-alpha.12.apk', False),
+                            ('sing-box-1.15.0-alpha.x.apk', False)]:
+            for pattern in patterns:
+                self.assertEqual(bool(re.fullmatch(pattern, name)), valid, name)
+            prefix = MANAGER.read_text().split('action="${1:-status}"')[0]
+            result = subprocess.run(['sh', '-c', prefix + '\ncore_package_name "$1"',
+                                     'test', name], capture_output=True, text=True)
+            self.assertEqual(result.returncode == 0, valid, name)
+
     def run_switch(self, target='1.14.0-r2', current='1.14.0-r3', failure=''):
         with tempfile.TemporaryDirectory() as tmp:
             prefix = MANAGER.read_text().split('action="${1:-status}"')[0]
@@ -64,6 +83,24 @@ restore_rollback() {{ echo recovered; [ "$FAILURE" != recovery ]; }}
         for target in ('1.14.0-r3', '1.14.0-r4'):
             result = self.run_switch(target=target)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_alpha_install_normalizes_apk_recovery_names(self):
+        result = self.run_switch(target='1.15.0-alpha.13', current='1.15.0_alpha12-r1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('download:sing-box-1.15.0-alpha.12-r1.apk', result.stdout)
+
+    def test_version_matching_accepts_apk_alpha_but_keeps_revisions_strict(self):
+        prefix = MANAGER.read_text().split('action="${1:-status}"')[0]
+        for expected, actual, matches in [
+            ('1.15.0-alpha.12', '1.15.0_alpha12-r1', True),
+            ('1.15.0-alpha.12-r2', '1.15.0_alpha12-r2', True),
+            ('1.15.0_alpha12-r2', '1.15.0_alpha12-r1', False),
+            ('1.15.0-alpha.12', '1.15.0_alpha13-r1', False),
+            ('1.15.0-alpha.12', '1.15.0-r1', False),
+        ]:
+            result = subprocess.run(['sh', '-c', prefix + '\nversions_match "$1" "$2"',
+                                     'test', expected, actual], capture_output=True, text=True)
+            self.assertEqual(result.returncode == 0, matches, (expected, actual, result.stderr))
 
     def test_rejection_does_not_install(self):
         for failure, code in [('checksum', 'checksum_mismatch'), ('config', 'candidate_rejected'),

@@ -1,15 +1,24 @@
-name: 每日检查并发布独立 SBProxy 核心
+name: 检查并发布独立 SBProxy 核心
 
 on:
   # Scheduled by Daily-Maintenance-Queue. No duplicate cron here.
   workflow_dispatch:
     inputs:
+      channel:
+        description: 上游发布通道
+        type: choice
+        options: [stable, alpha]
+        default: stable
       build_apks:
         description: 同时更新滚动 APK 发布（独立核心始终构建）
         default: true
         type: boolean
   workflow_call:
     inputs:
+      channel:
+        type: string
+        default: stable
+        required: false
       build_apks:
         required: false
         default: true
@@ -26,7 +35,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sbproxy-core-release
+  group: sbproxy-core-release-${{ inputs.channel || 'stable' }}
   cancel-in-progress: false
 
 jobs:
@@ -36,6 +45,7 @@ jobs:
     outputs:
       build: ${{ steps.resolve.outputs.build }}
       pin_needed: ${{ steps.resolve.outputs.pin_needed }}
+      publish_needed: ${{ steps.resolve.outputs.publish_needed }}
       version: ${{ steps.resolve.outputs.version }}
       revision: ${{ steps.resolve.outputs.revision }}
       tag: ${{ steps.resolve.outputs.tag }}
@@ -45,17 +55,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
-      - name: 检查稳定版及构建输入变更
+      - name: 检查所选通道及构建输入变更
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
+          CORE_CHANNEL: ${{ inputs.channel || 'stable' }}
         run: |
           python3 sing-box/tests/test-core-release.py
           python3 sing-box/tests/test-core-export.py
           python3 sing-box/tests/test-package-sources.py
           python3 luci-app-sbproxy/tests/test-core-switch.py
           sh sing-box/tests/static-tailscale-route-api.sh
-          python3 .github/scripts/core-release.py resolve
+          python3 .github/scripts/core-release.py resolve "$CORE_CHANNEL"
           {
             echo '### Sing-Box 核心检查'
             echo "- 上游版本：$(awk -F= '$1 == "version" { print $2 }' "$GITHUB_OUTPUT")"
@@ -77,7 +88,7 @@ jobs:
     needs: [resolve, build]
     if: >-
       always() && needs.resolve.result == 'success' &&
-      needs.resolve.outputs.pin_needed == 'true' &&
+      needs.resolve.outputs.publish_needed == 'true' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -95,6 +106,7 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
       SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
       FINGERPRINT: ${{ needs.resolve.outputs.fingerprint }}
+      CORE_CHANNEL: ${{ inputs.channel || 'stable' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -118,13 +130,16 @@ jobs:
       - name: 发布独立历史版本（不覆盖已有 Release）
         if: needs.resolve.outputs.build == 'true'
         run: |
+          release_flags=(--latest)
+          if [[ "$CORE_CHANNEL" == alpha ]]; then release_flags=(--prerelease --latest=false); fi
           gh release create "$RELEASE_TAG" core-release/* --target "$SOURCE_SHA" \
-            --title "SBProxy core $VERSION" --latest \
-            --notes "SBProxy full core, ARM64/AMD64. Includes Tailscale route API and Linux policy routing patches. Source: $SOURCE_SHA; upstream: SagerNet/sing-box v$VERSION. See core-manifest.json for checksums and build metadata. The newest 5 stable core releases are kept for online rollback."
+            --title "SBProxy core $VERSION" "${release_flags[@]}" \
+            --notes "SBProxy full core, ARM64/AMD64. Includes Tailscale route API and Linux policy routing patches. Source: $SOURCE_SHA; upstream: SagerNet/sing-box v$VERSION. See core-manifest.json for checksums and build metadata. The newest 5 releases in each channel are kept for online rollback. Channel: $CORE_CHANNEL."
       - name: 恢复已发布版本的清单
         if: needs.resolve.outputs.build == 'false'
         run: gh release download "$RELEASE_TAG" --pattern core-manifest.json --dir core-release
       - name: 发布成功后更新固件下载锁定版本
+        if: needs.resolve.outputs.pin_needed == 'true'
         id: commit
         env:
           PACKAGE_BRANCH: ${{ github.event.repository.default_branch }}
@@ -136,7 +151,7 @@ jobs:
             sing-box/Makefile sing-box/core-prebuilt.mk
 
   retain:
-    name: 最多保留 5 个核心版本
+    name: 每个通道最多保留 5 个核心版本
     needs: [resolve, publish]
     if: >-
       always() && needs.resolve.result == 'success' &&
@@ -150,7 +165,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
-      - name: 删除超出 5 个的历史核心 Release
+      - name: 清理各通道历史核心 Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/core-release.py retain

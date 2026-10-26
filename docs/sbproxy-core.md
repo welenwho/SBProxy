@@ -3,14 +3,32 @@
 核心源码、编译配置和 Tailscale 补丁统一在 `welenwho/packages` 维护。
 不使用也不修改 `singbox-v2ray-api` 的产物。
 
+当前内置 Tailscale 集成依赖 `tailscale-patches/010-restore-linux-policy-routing.patch`：
+它启用 Linux 策略路由检测，并在接口启停时安装、清理策略规则，使远端路由进入表 52。
+SBProxy 用该表实现选定子网的策略控制，不能仅替换状态页中的表号。
+未应用此补丁的 SagerNet Tailscale 依赖会保持 `ipRuleAvailable=false`，
+把路由写入 `main`；即使节点能 ping 通、核心带 `with_tailscale` 标签，
+也不代表兼容当前 OpenWrt 集成。`main` 是该内嵌版本的原生行为，并非路由表损坏。
+为保留“只接受勾选的远端子网”，稳定版和 Alpha 版均应用这项补丁。
+
+若状态页提示无法检查系统路由，检查 `ip -4 rule show`、
+`ip -4 route show table 52` 和 `ip -4 route show table main dev tailscale0`。
+表 52 不存在而远端路由在 `main` 时，先核对核心来源及补丁，勿手动搬移运行中核心的路由。
+恢复带补丁核心后，确认 `tailscale-sync` 持续运行、表 52 及选定子网规则均已恢复。
+
 ## 发布与版本
 
 每日维护队列每天两次调用 `Update-Sing-Box.yml`（北京时间 02:17 和 14:47），
-检查上游最新稳定版以及本仓库补丁、包定义、构建脚本的指纹。有变化才编译，
-未变化不会重复构建。也可手动运行该工作流。仅发布完整 SBProxy 核心，
+分别检查上游最新稳定版和 Alpha 版，以及本仓库补丁、包定义、构建脚本的指纹。
+未发布的版本才编译，已发布的版本不会覆盖。也可手动运行该工作流，选择
+`channel=stable`（默认）或 `channel=alpha`。仅发布完整 SBProxy 核心，
 不增加 standard/minimal 配置。
 
 - Release：`sbproxy-core-v1.14.3`（示例）。发布名只用上游版本，不附加 `-rN`。
+- Alpha Release：`sbproxy-core-v1.15.0-alpha.12`（示例），标记为 GitHub prerelease，
+  不设置 Latest，不改稳定版固件锁定文件，也不进入滚动 APK 发布。
+- Alpha 资产沿用上游版本名，如 `sing-box-1.15.0-alpha.12-arm64.apk`；
+  APK 元数据使用 `1.15.0_alpha12-r1`，核心输出仍为 `1.15.0-alpha.12`。
 - 架构：ARM64（ARMv8.0）和 AMD64（x86-64-v1）。
 - `sing-box-1.14.3-linux-arm64.tar.gz`：供固件打包的预编译核心。
 - `sing-box-1.14.3-arm64.apk`：供当前 ImmortalWrt APK 系统在线安装。
@@ -20,7 +38,7 @@
 每个上游版本只发布一次，标签和标题都不带 `-rN`。已发布的 Release 不覆盖，
 也不再为同一版本追加修订号。2026-10 之前已经发布的 `sbproxy-core-v1.14.x-rN`
 标签保持不变，在线回滚仍可下载。两种架构都成功、核心功能及静态链接检查通过后
-才发布，并把该版本标为仓库 Latest。发布后只保留版本号最新的 5 个稳定核心
+才发布；稳定版标为仓库 Latest。稳定版和 Alpha 各保留最新 5 个
 Release；当前固件锁定版本即使更旧也会保留。补丁无法应用时任务失败，不跳过补丁，
 也不推进固件版本。
 
@@ -52,6 +70,7 @@ APK 内二进制与压缩包内二进制来自同一次构建。
 核心管理日志仍在 `/var/run/sbproxy/core-manager.log`，校验和自动恢复保护不变。
 
 LuCI 核心管理读取版本化 Release 的历史列表，允许升级、重装或选择旧版回滚。
+稳定版优先排列，Alpha 明确标识并手动选择；两种通道都执行相同的校验和回滚流程。
 仅接受本仓库匹配架构的资产，使用 GitHub SHA-256 校验、APK 名称/版本/架构校验、
 完整编译标签与 Tailscale 路由 API 检查，并校验当前客户端/服务端配置。
 1.14 之前的核心不展示；版本达到最低要求也不意味着兼容当前配置，实际检查失败会阻止切换。

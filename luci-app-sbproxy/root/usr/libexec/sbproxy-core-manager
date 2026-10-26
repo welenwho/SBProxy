@@ -143,23 +143,24 @@ package_version() {
 
 core_package_name() {
 	printf '%s\n' "$1" | grep -Eq \
-		'^sing-box-[0-9]+\.[0-9]+\.[0-9]+(-r[1-9][0-9]*)?\.apk$'
+		'^sing-box-[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[1-9][0-9]*)?(-r[1-9][0-9]*)?\.apk$'
+}
+
+upstream_version() {
+	printf '%s\n' "$1" | sed 's/_alpha\([0-9][0-9]*\)/-alpha.\1/'
+}
+
+apk_version() {
+	printf '%s\n' "$1" | sed 's/-alpha\.\([0-9][0-9]*\)/_alpha\1/'
 }
 
 shown_version() {
-	case "$1" in
-	*-r[1-9]|*-r[1-9][0-9]|*-r[1-9][0-9][0-9])
-		printf '%s\n' "${1%-r*}"
-		;;
-	*)
-		printf '%s\n' "$1"
-		;;
-	esac
+	upstream_version "$1" | sed 's/-r[1-9][0-9]*$//'
 }
 
 versions_match() {
-	expected="$1"
-	actual="$2"
+	expected="$(upstream_version "$1")"
+	actual="$(upstream_version "$2")"
 	[ "$actual" = "$expected" ] && return 0
 	case "$expected" in
 	*-r*) return 1 ;;
@@ -380,7 +381,7 @@ validate_apk() {
 	apk --allow-untrusted extract --destination "$extract_dir" "$file" \
 		>>"$LOG_FILE" 2>&1 || return 1
 	[ -x "$extract_dir/usr/bin/sing-box" ] || return 1
-	[ "$("$extract_dir/usr/bin/sing-box" version -n 2>>"$LOG_FILE")" = "${expected_version%-r*}" ] || return 1
+	[ "$("$extract_dir/usr/bin/sing-box" version -n 2>>"$LOG_FILE")" = "$(shown_version "$expected_version")" ] || return 1
 	validate_binary "$extract_dir/usr/bin/sing-box" || return 1
 	validate_configs "$extract_dir/usr/bin/sing-box" || return 1
 	rm -rf -- "$extract_dir"
@@ -479,13 +480,14 @@ check_updates() {
 
 	current="$(shown_version "$(package_version)")"
 	latest=''
+	latest_alpha=''
 	while IFS="$TAB" read -r name url digest size created; do
 		candidate="${name#sing-box-}"
 		candidate="${candidate%.apk}"
 		shown="$(shown_version "$candidate")"
 		relation='unknown'
 		if [ -n "$current" ]; then
-			comparison="$(apk version --test "$current" "$shown" 2>/dev/null || true)"
+			comparison="$(apk version --test "$(apk_version "$current")" "$(apk_version "$shown")" 2>/dev/null || true)"
 			if [ "$comparison" = '<' ]; then
 				relation='newer'
 			elif [ "$comparison" = '=' ]; then
@@ -494,14 +496,25 @@ check_updates() {
 				relation='older'
 			fi
 		fi
-		if [ -z "$latest" ] || \
-		   [ "$(apk version --test "$latest" "$shown" 2>/dev/null || true)" = '<' ]; then
-			latest="$shown"
-		fi
+		case "$shown" in
+		*-alpha.*)
+			if [ -z "$latest_alpha" ] || \
+			   [ "$(apk version --test "$(apk_version "$latest_alpha")" "$(apk_version "$shown")" 2>/dev/null || true)" = '<' ]; then
+				latest_alpha="$shown"
+			fi
+			;;
+		*)
+			if [ -z "$latest" ] || \
+			   [ "$(apk version --test "$latest" "$shown" 2>/dev/null || true)" = '<' ]; then
+				latest="$shown"
+			fi
+			;;
+		esac
 		printf 'asset=%s\t%s\t%s\t%s\t%s\t%s\n' \
 			"$name" "$shown" "$relation" "$size" "$created" "${digest#sha256:}"
 	done < "$assets_file"
 	emit latest_package_version "$latest"
+	emit latest_alpha_package_version "$latest_alpha"
 	emit download_mode "$last_download_mode"
 }
 
@@ -511,7 +524,7 @@ save_rollback() {
 	digest="$3"
 	url="$4"
 	created="$5"
-	core="${version%-r*}"
+	core="$(shown_version "$version")"
 	sha="${digest#sha256:}"
 	metadata_file="$work_dir/rollback.meta"
 	chmod 600 "$file"
@@ -544,7 +557,7 @@ EOF
 	current="$(package_version)"
 	[ -n "$current" ] || fail current_version_unknown 'Unable to determine the installed core package version.'
 
-	current_name="sing-box-$current.apk"
+	current_name="sing-box-$(upstream_version "$current").apk"
 	current_asset="$(find_recovery_asset "$current_name")" || \
 		current_asset="$(find_recovery_asset "sing-box-$(shown_version "$current").apk")" || \
 		fail rollback_source_unavailable \

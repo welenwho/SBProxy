@@ -119,8 +119,10 @@ validate_cron() {
 }
 
 reload_cron() {
-	/etc/init.d/cron reload >"/dev/null" 2>&1 ||
-		/etc/init.d/cron restart >"/dev/null" 2>&1
+	# BusyBox reads cron.update before scheduling jobs each minute. Restarting
+	# crond here kills its jobs, including a subscription update currently
+	# restarting SBProxy, leaving the service half-stopped.
+	printf '%s\n' "${CRON_FILE##*/}" >> "${CRON_FILE%/*}/cron.update"
 }
 
 configure_subscription_cron() {
