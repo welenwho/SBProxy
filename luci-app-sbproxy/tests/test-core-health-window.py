@@ -9,6 +9,21 @@ SOURCE = MANAGER.read_text().split('action="${1:-status}"')[0]
 
 
 class HealthWindowTests(unittest.TestCase):
+    def test_restart_validates_new_ports_after_config_regeneration(self):
+        for refresh_success in (True, False):
+            script = SOURCE.replace('/etc/init.d/sbproxy restart', 'restart_fixture') + '''
+LOG_FILE=/dev/null
+restarted=0
+restart_fixture() { restarted=1; }
+refresh_runtime_health_plan() { [ "$restarted" = 1 ] || return 97; echo refreshed; return %d; }
+wait_for_service() { echo checked; }
+restart_if_needed 1
+''' % (0 if refresh_success else 1)
+            result = subprocess.run(['sh', '-c', script], capture_output=True, text=True)
+            self.assertEqual(result.returncode == 0, refresh_success)
+            self.assertEqual(result.stdout.splitlines(),
+                             ['refreshed', 'checked'] if refresh_success else ['refreshed'])
+
     def check(self, body):
         with tempfile.TemporaryDirectory() as tmp:
             script = SOURCE + '\nLOG_FILE=/dev/null\nsleep() { :; }\n' + body + '\nwait_for_service\n'

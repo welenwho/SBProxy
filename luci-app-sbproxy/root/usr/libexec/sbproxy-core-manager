@@ -436,6 +436,7 @@ restart_if_needed() {
 	progress restarting
 	/etc/init.d/sbproxy restart >>"$LOG_FILE" 2>&1 || return 1
 	progress checking_health
+	refresh_runtime_health_plan || return 1
 	wait_for_service
 }
 
@@ -735,8 +736,8 @@ backup_plugin_config() {
 	tar -czf "$destination" -C / "$@" >>"$LOG_FILE" 2>&1
 }
 
-refresh_plugin_health_plan() {
-	# Plugin migrations/restarts can regenerate random internal ports. Keep
+refresh_runtime_health_plan() {
+	# Service restarts can regenerate random internal ports. Keep
 	# every previously required instance, but validate its new configuration.
 	ucode /etc/sbproxy/scripts/check_core_health.uc snapshot > "$work_dir/current-core-plan.json" 2>>"$LOG_FILE" || return 1
 	ucode -e '
@@ -759,7 +760,7 @@ restart_plugin_services() {
 	[ "$was_running" = 1 ] || return 0
 	progress restarting
 	/etc/init.d/sbproxy restart >>"$LOG_FILE" 2>&1 || return 1
-	refresh_plugin_health_plan || return 1
+	refresh_runtime_health_plan || return 1
 	wait_for_service
 }
 
@@ -772,7 +773,7 @@ plugin_health() {
 	/etc/init.d/rpcd reload >>"$LOG_FILE" 2>&1 || return 1
 	if [ "$was_running" = 1 ]; then
 		progress checking_health
-		refresh_plugin_health_plan || return 1
+		refresh_runtime_health_plan || return 1
 		wait_for_service || restart_plugin_services || return 1
 	fi
 	# Verify the management endpoint after rpcd has reloaded its package files.
