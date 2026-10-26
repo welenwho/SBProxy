@@ -39,7 +39,9 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-apk-packages
+  # Core prereleases must not displace a pending rolling package build (or
+  # vice versa). GitHub keeps only one pending run per concurrency group.
+  group: publish-apk-packages-${{ inputs.core_version || 'rolling' }}
   cancel-in-progress: false
 
 jobs:
