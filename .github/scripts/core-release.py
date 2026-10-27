@@ -152,10 +152,21 @@ def public_version(version, revision, manifest=None):
     return f'{version}-r{revision}' if revision else version
 
 
-def resolve(channel='stable'):
+def resolve(channel='stable', requested_version='', requested_revision='1'):
     if channel not in ('stable', 'alpha'):
         raise ValueError('Invalid core channel')
-    if channel == 'stable':
+    if not re.fullmatch(r'[1-9]\d{0,3}', requested_revision):
+        raise ValueError('Invalid package revision')
+    if not requested_version and requested_revision != '1':
+        raise ValueError('A package revision override requires an explicit version')
+    pin_allowed = channel == 'stable' and not requested_version
+    if requested_version:
+        if version_channel(requested_version) != channel:
+            raise ValueError('Requested version does not match the selected channel')
+        upstream = api(f'repos/SagerNet/sing-box/releases/tags/v{requested_version}')
+        if upstream.get('tag_name') != 'v' + requested_version:
+            raise ValueError('Upstream returned a different version')
+    elif channel == 'stable':
         upstream = api('repos/SagerNet/sing-box/releases/latest')
     else:
         candidates = [release for release in api('repos/SagerNet/sing-box/releases?per_page=100')
@@ -181,6 +192,8 @@ def resolve(channel='stable'):
             continue
         manifest = manifest_of(release)
         if manifest:
+            if requested_version and int(manifest['revision']) != int(requested_revision):
+                raise ValueError('This upstream version is already published with another package revision; it cannot be overwritten')
             published.append((parsed[1] or 0, release, manifest))
     # Reconcile a previously published release if committing the pin failed.
     for revision, release, manifest in sorted(published, reverse=True):
@@ -188,10 +201,10 @@ def resolve(channel='stable'):
             continue
         identity = public_version(version, revision or None, manifest)
         output(build='false', tag=release['tag_name'], version=version,
-               revision=revision or 1, source_sha=source_sha, fingerprint=fp,
-               publish_needed=str(channel == 'stable' and (pin.get('CORE_PIN_VERSION') != identity or
+               revision=manifest.get('revision', revision or 1), source_sha=source_sha, fingerprint=fp,
+               publish_needed=str(pin_allowed and (pin.get('CORE_PIN_VERSION') != identity or
                                   pin.get('CORE_FINGERPRINT') != fp)).lower(),
-               pin_needed=str(channel == 'stable' and (pin.get('CORE_PIN_VERSION') != identity or
+               pin_needed=str(pin_allowed and (pin.get('CORE_PIN_VERSION') != identity or
                               pin.get('CORE_FINGERPRINT') != fp)).lower())
         return
     if published:
@@ -201,13 +214,13 @@ def resolve(channel='stable'):
         identity = public_version(version, revision or None, manifest)
         same = manifest.get('fingerprint') == fp
         output(build='false', tag=release['tag_name'], version=version,
-               revision=revision or 1, source_sha=source_sha, fingerprint=fp,
+               revision=manifest.get('revision', revision or 1), source_sha=source_sha, fingerprint=fp,
                publish_needed='false',
-               pin_needed=str(channel == 'stable' and same and (pin.get('CORE_PIN_VERSION') != identity or
+               pin_needed=str(pin_allowed and same and (pin.get('CORE_PIN_VERSION') != identity or
                                         pin.get('CORE_FINGERPRINT') != fp)).lower())
         return
     # OpenWrt still needs PKG_RELEASE. It is not part of the published name.
-    output(build='true', publish_needed='true', pin_needed=str(channel == 'stable').lower(), version=version, revision=1,
+    output(build='true', publish_needed='true', pin_needed=str(pin_allowed).lower(), version=version, revision=int(requested_revision),
            tag=f'sbproxy-core-v{version}', source_sha=source_sha, fingerprint=fp)
 
 

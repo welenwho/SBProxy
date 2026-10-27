@@ -24,6 +24,14 @@ SBProxy 用该表实现选定子网的策略控制，不能仅替换状态页中
 `channel=stable`（默认）或 `channel=alpha`。仅发布完整 SBProxy 核心，
 不增加 standard/minimal 配置。
 
+首次从其他固件迁移时，如果仓库缺少当前核心版本，可手动指定
+`upstream_version` 和 `package_revision`，从上游对应 Release 的源码应用相同补丁，
+经双架构编译及校验后补发恢复包。例如设备包版本为 `1.15.0_alpha12-r2` 时，
+指定 `channel=alpha`、`upstream_version=1.15.0-alpha.12`、`package_revision=2`。
+补发包是本项目的兼容构建，不冒充原固件厂商产物，也不包含设备本地配置。
+指定历史版本不改稳定版固件锁定和 Latest；已发布版本不能覆盖或更换修订号。
+之后在“版本管理”正常升级，升级器会从发布仓库下载、校验并保存恢复包。
+
 - Release：`sbproxy-core-v1.14.3`（示例）。发布名只用上游版本，不附加 `-rN`。
 - Alpha Release：`sbproxy-core-v1.15.0-alpha.12`（示例），标记为 GitHub prerelease，
   不设置 Latest，不改稳定版固件锁定文件，也不进入滚动 APK 发布。

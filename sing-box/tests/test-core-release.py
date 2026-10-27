@@ -102,6 +102,51 @@ class CoreReleaseTests(unittest.TestCase):
         self.assertEqual(out.call_args.kwargs['publish_needed'], 'true')
         self.assertEqual(out.call_args.kwargs['pin_needed'], 'false')
 
+    def test_historical_alpha_can_preserve_firmware_revision(self):
+        upstream = dict(tag_name='v1.15.0-alpha.12', draft=False, prerelease=True)
+        with patch.object(core, 'api', return_value=upstream) as api, \
+             patch.object(core, 'releases', return_value=[]), patch.object(core, 'output') as out:
+            core.resolve('alpha', '1.15.0-alpha.12', '2')
+        api.assert_called_once_with('repos/SagerNet/sing-box/releases/tags/v1.15.0-alpha.12')
+        self.assertEqual(out.call_args.kwargs['revision'], 2)
+        self.assertEqual(out.call_args.kwargs['version'], '1.15.0-alpha.12')
+        self.assertEqual(out.call_args.kwargs['pin_needed'], 'false')
+        self.assertEqual(out.call_args.kwargs['build'], 'true')
+
+    def test_explicit_stable_does_not_replace_firmware_pin(self):
+        upstream = dict(tag_name='v1.14.0', draft=False, prerelease=False)
+        with patch.object(core, 'api', return_value=upstream), \
+             patch.object(core, 'releases', return_value=[]), patch.object(core, 'output') as out:
+            core.resolve('stable', '1.14.0', '2')
+        self.assertEqual(out.call_args.kwargs['pin_needed'], 'false')
+
+    def test_historical_request_cannot_overwrite_a_published_revision(self):
+        upstream = dict(tag_name='v1.15.0-alpha.12', draft=False, prerelease=True)
+        published = dict(tag_name='sbproxy-core-v1.15.0-alpha.12', draft=False, prerelease=True)
+        with patch.object(core, 'api', return_value=upstream), \
+             patch.object(core, 'releases', return_value=[published]), \
+             patch.object(core, 'manifest_of', return_value=dict(revision=1, fingerprint=core.fingerprint())):
+            with self.assertRaisesRegex(ValueError, 'cannot be overwritten'):
+                core.resolve('alpha', '1.15.0-alpha.12', '2')
+
+    def test_invalid_historical_selection_is_rejected_before_network_access(self):
+        with patch.object(core, 'api') as api:
+            for args in [('alpha', '../../bad', '2'), ('stable', '1.15.0-alpha.12', '1'),
+                         ('alpha', '1.15.0-alpha.12', '0'), ('alpha', '', '2')]:
+                with self.assertRaises(ValueError): core.resolve(*args)
+            api.assert_not_called()
+
+    def test_historical_rerun_preserves_published_apk_revision(self):
+        upstream = dict(tag_name='v1.15.0-alpha.12', draft=False, prerelease=True)
+        published = dict(tag_name='sbproxy-core-v1.15.0-alpha.12', draft=False, prerelease=True)
+        with patch.object(core, 'api', return_value=upstream), \
+             patch.object(core, 'releases', return_value=[published]), \
+             patch.object(core, 'manifest_of', return_value=dict(revision=2, package_version='1.15.0-alpha.12', fingerprint=core.fingerprint())), \
+             patch.object(core, 'output') as out:
+            core.resolve('alpha', '1.15.0-alpha.12', '2')
+        self.assertEqual(out.call_args.kwargs['revision'], 2)
+        self.assertEqual(out.call_args.kwargs['build'], 'false')
+
     def test_published_alpha_is_immutable(self):
         release = dict(tag_name='sbproxy-core-v1.15.0-alpha.12', draft=False, prerelease=True)
         upstream = [dict(tag_name='v1.15.0-alpha.12', draft=False, prerelease=True)]

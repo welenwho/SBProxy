@@ -9,6 +9,14 @@ on:
         type: choice
         options: [stable, alpha]
         default: stable
+      upstream_version:
+        description: 指定补发的上游版本（如 1.15.0-alpha.12）；留空检查最新版本
+        type: string
+        default: ''
+      package_revision:
+        description: APK 修订号；补发固件恢复包时匹配原包修订号
+        type: string
+        default: '1'
       build_apks:
         description: 同时更新滚动 APK 发布（独立核心始终构建）
         default: true
@@ -18,6 +26,14 @@ on:
       channel:
         type: string
         default: stable
+        required: false
+      upstream_version:
+        type: string
+        default: ''
+        required: false
+      package_revision:
+        type: string
+        default: '1'
         required: false
       build_apks:
         required: false
@@ -60,13 +76,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CORE_CHANNEL: ${{ inputs.channel || 'stable' }}
+          REQUESTED_VERSION: ${{ inputs.upstream_version }}
+          REQUESTED_REVISION: ${{ inputs.package_revision || '1' }}
         run: |
           python3 sing-box/tests/test-core-release.py
           python3 sing-box/tests/test-core-export.py
           python3 sing-box/tests/test-package-sources.py
           python3 luci-app-sbproxy/tests/test-core-switch.py
           sh sing-box/tests/static-tailscale-route-api.sh
-          python3 .github/scripts/core-release.py resolve "$CORE_CHANNEL"
+          python3 .github/scripts/core-release.py resolve "$CORE_CHANNEL" "$REQUESTED_VERSION" "$REQUESTED_REVISION"
           {
             echo '### Sing-Box 核心检查'
             echo "- 上游版本：$(awk -F= '$1 == "version" { print $2 }' "$GITHUB_OUTPUT")"
@@ -107,6 +125,7 @@ jobs:
       SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
       FINGERPRINT: ${{ needs.resolve.outputs.fingerprint }}
       CORE_CHANNEL: ${{ inputs.channel || 'stable' }}
+      REQUESTED_VERSION: ${{ inputs.upstream_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -131,6 +150,7 @@ jobs:
         if: needs.resolve.outputs.build == 'true'
         run: |
           release_flags=(--latest)
+          if [[ -n "$REQUESTED_VERSION" ]]; then release_flags=(--latest=false); fi
           if [[ "$CORE_CHANNEL" == alpha ]]; then release_flags=(--prerelease --latest=false); fi
           gh release create "$RELEASE_TAG" core-release/* --target "$SOURCE_SHA" \
             --title "SBProxy core $VERSION" "${release_flags[@]}" \
