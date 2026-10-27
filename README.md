@@ -18,7 +18,6 @@ LuCI 界面管理客户端、服务端、节点和核心；流量由 TUN 接管�
 - [代理模式](docs/sbproxy-proxy-mode.md)
 - [智能选节点](docs/sbproxy-smart-selection.md)
 - [接入接口分流](docs/sbproxy-ingress-policy.md)
-- [版本管理与插件升级](docs/sbproxy-version-management.md)
 - [独立核心构建与发布](docs/sbproxy-core.md)
 - [自适应规则移除](docs/sbproxy-adaptive-removal.md)
 
@@ -26,14 +25,14 @@ LuCI 界面管理客户端、服务端、节点和核心；流量由 TUN 接管�
 
 | 软件包 | 版本 | 说明 | 源码来源 |
 | --- | --- | --- | --- |
-| `luci-app-sbproxy` | `1.0.1-r40` | SBProxy 的 LuCI 管理界面，负责代理、节点、Tailscale 与核心管理。 | [welenwho/packages](https://github.com/welenwho/packages) |
+| `luci-app-sbproxy` | `1.0.1-r41` | SBProxy 的 LuCI 管理界面，负责代理、节点、Tailscale 与核心管理。 | [welenwho/packages](https://github.com/welenwho/packages) |
 | `sing-box` | `1.14.4` | 带本项目 Tailscale 兼容补丁的 sing-box 核心，供固件打包和在线安装。 | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) |
 
 ## 自动维护
 
-CI 每天两次检查 sing-box 上游稳定版、Alpha 版和 SBProxy 规则数据（北京时间 02:17 和 14:47），仅在发现更新时继续构建、提交和发布。软件包目录通过 Makefile 自动发现；新增或删除软件包后，构建范围和发布资产清理会自动调整。
+CI 每天两次检查 sing-box 上游稳定版和 SBProxy 规则数据（北京时间 02:17 和 14:47），仅在发现更新时继续构建、提交和发布。软件包目录通过 Makefile 自动发现；新增或删除软件包后，构建范围和发布资产清理会自动调整。
 
-独立 sing-box 核心分稳定版和 Alpha 通道，各保留最新 5 个版本；两者均包含 SBProxy 的 Tailscale 补丁。Alpha 明确标记为预发布，手动选择，不替换默认稳定版及固件锁定版本。滚动 APK 发布按 ARM64 和 AMD64 分开维护；每个包名保留最近三个版本，并提供包含各软件包最新版的整合包。
+独立 sing-box 核心按稳定版发布，最多保留 5 个版本。APK 发布按 ARM64 和 AMD64 分开维护；每个包名保留最近三个版本，并提供包含各软件包最新版的整合包。
 
 ## License
 
