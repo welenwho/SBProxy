@@ -93,6 +93,10 @@ restore_rollback() {{ echo recovered; [ "$FAILURE" != recovery ]; }}
         prefix = MANAGER.read_text().split('action="${1:-status}"')[0]
         for expected, actual, matches in [
             ('1.15.0-alpha.12', '1.15.0_alpha12-r1', True),
+            ('1.15.0-alpha.12', '1.15.0_alpha12-r2', True),
+            ('1.14.4', '1.14.4-r10', True),
+            ('1.14.4', '1.14.4-rinvalid', False),
+            ('1.14.4', '1.14.4-r0', False),
             ('1.15.0-alpha.12-r2', '1.15.0_alpha12-r2', True),
             ('1.15.0_alpha12-r2', '1.15.0_alpha12-r1', False),
             ('1.15.0-alpha.12', '1.15.0_alpha13-r1', False),
