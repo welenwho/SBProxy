@@ -15,15 +15,15 @@
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "sbproxy/client-1-0-1-r43"
+			"path": "sbproxy/client-1-0-2-r1"
 		}
 	},
 	"admin/vpn/sbproxy/tailscale": {
-		"title": "Tailscale",
+		"title": "Virtual Networking",
 		"order": 12,
 		"action": {
 			"type": "view",
-			"path": "sbproxy/tailscale-1-0-1-r43"
+			"path": "sbproxy/tailscale-1-0-2-r1"
 		}
 	},
 	"admin/vpn/sbproxy/node": {
@@ -47,7 +47,7 @@
 		"order": 25,
 		"action": {
 			"type": "view",
-			"path": "sbproxy/core-1-0-1-r43"
+			"path": "sbproxy/core-1-0-2-r1"
 		}
 	},
 	"admin/vpn/sbproxy/status": {

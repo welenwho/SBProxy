@@ -43,6 +43,23 @@ const callTailscalePing = rpc.declare({
 	expect: { '': {} }
 });
 
+/* Theme headers can stick below the page toolbar even inside a horizontal
+ * scroll container, covering peer rows. Keep status headers in normal flow
+ * and contain theme table margins within each scrollable table. */
+const tailscaleStatusStyle = `
+#tailscale_status .table .tr > .th {
+	position: static;
+}
+#tailscale_status .sbproxy-tailscale-table {
+	min-width: 0;
+	overflow-x: auto;
+}
+#tailscale_status .sbproxy-tailscale-table > .table {
+	width: 100% !important;
+	margin: 0;
+}
+`;
+
 function ipv4Subnet(address) {
 	const parts = (address || '').split('/');
 	const cidr = Number(parts[1]);
@@ -329,9 +346,9 @@ function renderTailscaleRoutes(status, configuredPeerRoutes, acceptRoutes) {
 			tailscaleStatusRow(_('Policy Rules'), _('%d table 52 rules').format((systemRouting.rules || []).length))
 		]),
 		E('h4', {}, _('Routes Advertised by Peers')),
-		E('div', { 'style': 'overflow-x:auto' }, E('table', { 'class': 'table' }, routeRows)),
+		E('div', { 'class': 'sbproxy-tailscale-table' }, E('table', { 'class': 'table' }, routeRows)),
 		E('h4', {}, _('Installed System Routes')),
-		E('div', { 'style': 'overflow-x:auto' }, E('table', { 'class': 'table' }, systemRows))
+		E('div', { 'class': 'sbproxy-tailscale-table' }, E('table', { 'class': 'table' }, systemRows))
 	]);
 }
 
@@ -425,7 +442,7 @@ function renderTailscalePeers(status) {
 	}
 	if (!peers.length)
 		rows.push(E('tr', { 'class': 'tr' }, E('td', { 'class': 'td', 'colspan': 4 }, _('No peers found.'))));
-	return E('div', { 'style': 'overflow-x:auto' }, E('table', { 'class': 'table' }, rows));
+	return E('div', { 'class': 'sbproxy-tailscale-table' }, E('table', { 'class': 'table' }, rows));
 }
 
 function renderTailscaleStatus(status, configuredPeerRoutes, configuredAdvertiseRoutes, acceptRoutes) {
@@ -466,7 +483,7 @@ return view.extend({
 		const acceptRoutes = uci.get(data[0], 'tailscale', 'accept_routes') === '1';
 		const localAdvertiseSubnets = data[4] || [];
 
-		m = new form.Map('sbproxy', _('Tailscale'),
+		m = new form.Map('sbproxy', _('Virtual Networking'),
 			_('Runs Tailscale inside the SBProxy sing-box process. It can run without a proxy node; the independent Tailscale service must be disabled first.'));
 
 		s = m.section(form.NamedSection, 'tailscale', 'sbproxy');
@@ -1093,7 +1110,7 @@ return view.extend({
 				refreshTailscaleStatus();
 				refreshAdvertiseRouteChoices();
 			}, 0);
-			return node;
+			return E([ E('style', [ tailscaleStatusStyle ]), node ]);
 		});
 	}
 });

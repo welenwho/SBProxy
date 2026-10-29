@@ -4697,7 +4697,12 @@ msgstr ""
 msgid "WAN IP Policy"
 msgstr ""
 
-#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:683
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:486
+#: luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json:22
+msgid "Virtual Networking"
+msgstr ""
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:700
 msgid "WAN access Tailscale"
 msgstr ""
 

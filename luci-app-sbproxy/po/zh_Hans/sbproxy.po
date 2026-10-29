@@ -4823,7 +4823,12 @@ msgstr "WAN DNS（从接口获取）"
 msgid "WAN IP Policy"
 msgstr "WAN 口策略"
 
-#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:683
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:486
+#: luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json:22
+msgid "Virtual Networking"
+msgstr "虚拟组网"
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:700
 msgid "WAN access Tailscale"
 msgstr "WAN 访问 Tailscale"
 

@@ -23,8 +23,8 @@ LUCI_DEPENDS:= \
 LUCI_EXTRA_DEPENDS:=sing-box (>=1.14.0)
 
 PKG_NAME:=luci-app-sbproxy
-PKG_VERSION:=1.0.1
-PKG_RELEASE:=43
+PKG_VERSION:=1.0.2
+PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 
 define Package/luci-app-sbproxy/conffiles
