@@ -706,7 +706,57 @@ prepare_plugin_package() {
 $entry
 EOF
 	curl_to_file "$url" "$destination" && verify_digest "$destination" "$digest" &&
-		validate_plugin_apk "$destination" "$package" "$version"
+		validate_plugin_apk "$destination" "$package" "$version" &&
+		cache_plugin_package "$package" "$version" "$destination" "$digest"
+}
+
+plugin_cache_path() {
+	case "$1" in luci-app-sbproxy|luci-i18n-sbproxy-zh-cn) ;; *) return 1 ;; esac
+	plugin_package_name "luci-app-sbproxy-$2.apk" || return 1
+	printf '%s/plugin-packages/%s-%s.apk\n' "$STATE_DIR" "$1" "$2"
+}
+
+cache_plugin_package() {
+	local package="$1" version="$2" source="$3" digest="${4#sha256:}" cached
+	cached="$(plugin_cache_path "$package" "$version")" || return 1
+	mkdir -p "$STATE_DIR/plugin-packages" && chmod 700 "$STATE_DIR/plugin-packages" || return 1
+	# Only a release-verified package enters this cache. Publish its checksum
+	# last, so an interrupted copy cannot become a usable recovery package.
+	cp "$source" "$cached.new" && verify_digest "$cached.new" "$digest" &&
+		printf '%s\n' "$digest" > "$cached.sha256.new" &&
+		mv -f "$cached.new" "$cached" && mv -f "$cached.sha256.new" "$cached.sha256"
+}
+
+prepare_plugin_recovery() {
+	local package="$1" version="$2" destination="$3" cached digest
+	cached="$(plugin_cache_path "$package" "$version")" || return 1
+	digest="$(cat "$cached.sha256" 2>/dev/null)"
+	if printf '%s\n' "$digest" | grep -Eq '^[0-9a-f]{64}$' &&
+	   cp "$cached" "$destination" 2>/dev/null &&
+	   verify_digest "$destination" "$digest" &&
+	   validate_plugin_apk "$destination" "$package" "$version"; then
+		return 0
+	fi
+	# Firmware installs may not have a cache yet. Recover their exact package
+	# from the release as before; target installs always require the release.
+	prepare_plugin_package "$package" "$version" "$destination"
+}
+
+prune_plugin_cache() {
+	local cached name package version
+	for cached in "$STATE_DIR/plugin-packages/"*.apk; do
+		[ -f "$cached" ] || continue
+		name="${cached##*/}"
+		case "$name" in
+		luci-app-sbproxy-*) package=luci-app-sbproxy ;;
+		luci-i18n-sbproxy-zh-cn-*) package=luci-i18n-sbproxy-zh-cn ;;
+		*) continue ;;
+		esac
+		version="${name#"$package"-}"; version="${version%.apk}"
+		plugin_cache_path "$package" "$version" >/dev/null || continue
+		case "$version" in "$plugin_target_version"|"$previous"|"$plugin_language_version") continue ;; esac
+		rm -f "$cached" "$cached.sha256"
+	done
 }
 
 install_plugin_packages() {
@@ -817,9 +867,9 @@ upgrade_plugin() {
 	validate_plugin_plan "$@" ||
 		fail candidate_rejected 'Package dependencies are not compatible with this firmware.'
 	progress preparing_recovery
-	prepare_plugin_package luci-app-sbproxy "$previous" "$work_dir/previous-plugin.apk" || fail rollback_source_unavailable 'The installed plugin package is no longer available for recovery.'
+	prepare_plugin_recovery luci-app-sbproxy "$previous" "$work_dir/previous-plugin.apk" || fail rollback_source_unavailable 'The installed plugin package is no longer available for recovery.'
 	if [ -n "$plugin_language_version" ]; then
-		prepare_plugin_package luci-i18n-sbproxy-zh-cn "$plugin_language_version" "$work_dir/previous-language.apk" || fail rollback_source_unavailable 'The installed language package is no longer available for recovery.'
+		prepare_plugin_recovery luci-i18n-sbproxy-zh-cn "$plugin_language_version" "$work_dir/previous-language.apk" || fail rollback_source_unavailable 'The installed language package is no longer available for recovery.'
 	fi
 	rollback_dir="$STATE_DIR/plugin-recovery"
 	mkdir -p "$rollback_dir" || fail temporary_directory_failed 'Unable to prepare plugin recovery.'
@@ -834,6 +884,7 @@ upgrade_plugin() {
 	was_running=0; [ -z "$expected_instances" ] || was_running=1
 	progress installing
 	if install_plugin_packages "$@" && plugin_health; then
+		prune_plugin_cache
 		emit upgraded 1
 		emit component plugin
 		emit package_version "$plugin_target_version"

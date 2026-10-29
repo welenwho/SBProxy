@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Plugin transaction tests: no router paths, network or actual APK writes."""
 from pathlib import Path
+import hashlib
 import os
 import shlex
 import subprocess
@@ -12,6 +13,82 @@ PREFIX = MANAGER.read_text().split('action="${1:-status}"')[0]
 
 
 class PluginUpgradeTests(unittest.TestCase):
+    def cache_command(self, root, command):
+        setup = '\nSTATE_DIR=' + shlex.quote(str(root)) + '\n'
+        setup += 'LOG_FILE="$STATE_DIR/log"\n'
+        setup += '''
+apk() { [ "$1" = adbdump ] && cat "$2"; }
+prepare_plugin_package() { return 1; }
+'''
+        return subprocess.run(['sh', '-c', PREFIX + setup + command],
+                              text=True, capture_output=True)
+
+    def cached_package(self, root, name='luci-app-sbproxy', version='1.0.1-r38',
+                       metadata_name=None, metadata_version=None, arch='noarch'):
+        path = Path(root) / 'plugin-packages' / f'{name}-{version}.apk'
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(f'  name: {metadata_name or name}\n'
+                        f'  version: {metadata_version or version}\n  arch: {arch}\n')
+        Path(str(path) + '.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest() + '\n')
+        return path
+
+    def test_cached_current_packages_survive_release_retention(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ('luci-app-sbproxy', 'luci-i18n-sbproxy-zh-cn'):
+                cached = self.cached_package(tmp, name=name)
+                result = self.cache_command(tmp,
+                    f'prepare_plugin_recovery {name} 1.0.1-r38 "$STATE_DIR/recovery.apk"')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual((Path(tmp) / 'recovery.apk').read_bytes(), cached.read_bytes())
+            # A valid cached package cannot replace a missing release target.
+            result = self.cache_command(tmp,
+                'prepare_plugin_package luci-app-sbproxy 1.0.1-r38 "$STATE_DIR/target.apk"')
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_cached_recovery_rejects_corruption_and_wrong_metadata(self):
+        for invalid in ('contents', 'digest', 'missing_digest', 'name', 'version', 'arch'):
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as tmp:
+                cached = self.cached_package(tmp,
+                    metadata_name='unrelated' if invalid == 'name' else None,
+                    metadata_version='1.0.1-r37' if invalid == 'version' else None,
+                    arch='wrong' if invalid == 'arch' else 'noarch')
+                if invalid == 'contents':
+                    cached.write_text('corrupt')
+                elif invalid == 'digest':
+                    Path(str(cached) + '.sha256').write_text('bad\n')
+                elif invalid == 'missing_digest':
+                    Path(str(cached) + '.sha256').unlink()
+                result = self.cache_command(tmp,
+                    'prepare_plugin_recovery luci-app-sbproxy 1.0.1-r38 "$STATE_DIR/recovery.apk"')
+                self.assertNotEqual(result.returncode, 0, invalid)
+
+    def test_download_is_cached_before_install_and_pruning_keeps_recovery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for version in ('1.0.1-r36', '1.0.1-r37', '1.0.1-r38'):
+                self.cached_package(tmp, version=version)
+            source = self.cached_package(tmp, version='1.0.1-r39')
+            source.rename(Path(tmp) / 'source.apk')
+            source_hash = hashlib.sha256((Path(tmp) / 'source.apk').read_bytes()).hexdigest()
+            Path(str(source) + '.sha256').unlink()
+            unrelated = Path(tmp) / 'plugin-packages' / 'unrelated.apk'
+            unrelated.write_text('keep')
+            setup = '\nSTATE_DIR=' + shlex.quote(tmp) + '\nLOG_FILE="$STATE_DIR/log"\n'
+            setup += f'''
+apk() {{ [ "$1" = adbdump ] && cat "$2"; }}
+asset_by_name() {{ printf '%s\\turl\\tsha256:{source_hash}\\t100\\tdate\\n' "$1"; }}
+curl_to_file() {{ cp "$STATE_DIR/source.apk" "$2"; }}
+prepare_plugin_package luci-app-sbproxy 1.0.1-r39 "$STATE_DIR/candidate.apk" || exit 1
+plugin_target_version=1.0.1-r39
+previous=1.0.1-r38
+plugin_language_version=1.0.1-r38
+prune_plugin_cache
+'''
+            result = subprocess.run(['sh', '-c', PREFIX + setup], text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(sorted(p.name for p in unrelated.parent.glob('*.apk')),
+                ['luci-app-sbproxy-1.0.1-r38.apk', 'luci-app-sbproxy-1.0.1-r39.apk', 'unrelated.apk'])
+            self.assertEqual(Path(str(source) + '.sha256').read_text().strip(), source_hash)
+
     def test_matching_language_lookup_does_not_replace_plugin_asset_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
             assets = Path(tmp) / 'assets'
