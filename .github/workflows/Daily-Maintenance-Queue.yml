@@ -43,8 +43,6 @@ jobs:
     needs: [singbox, singbox_alpha]
     if: ${{ always() }}
     uses: ./.github/workflows/Update-SBProxy.yml
-    with:
-      build_apks: false
 
   translation:
     name: 翻译维护

@@ -81,7 +81,9 @@ else
 				[[ "$path" == "$package/"* ]] || continue
 				package_changed=true
 				case "$path" in
-					"$package/README"|"$package/README.md") ;;
+					"$package/README"|"$package/README.md"|\
+					"$package"/root/etc/sbproxy/resources/*|\
+					"$package"/root/etc/sbproxy/dashboard/*) ;;
 					*) only_nonbuild_files=false ;;
 				esac
 			done
@@ -121,7 +123,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
 	if [[ "$changed" == true ]]; then
 		printf '### APK 软件包：%s\n' "$packages_display" >> "$GITHUB_STEP_SUMMARY"
 	else
-		echo '未检测到需要编译的软件包；纯说明变更不触发编译。' \
+		echo '未检测到需要编译的软件包；说明或内置数据变更不触发编译。' \
 			>> "$GITHUB_STEP_SUMMARY"
 	fi
 fi

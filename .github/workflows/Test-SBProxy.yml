@@ -6,12 +6,20 @@ on:
       - 'luci-app-sbproxy/**'
       - 'sing-box/tests/**'
       - '.github/scripts/prepare-rule-set-tool.sh'
+      - '.github/scripts/update-sbproxy-geodata.sh'
+      - '.github/scripts/rule-set-identity.py'
+      - '.github/scripts/resolve-build-packages.sh'
+      - '.github/workflows/Update-SBProxy.yml'
       - '.github/workflows/Test-SBProxy.yml'
   pull_request:
     paths:
       - 'luci-app-sbproxy/**'
       - 'sing-box/tests/**'
       - '.github/scripts/prepare-rule-set-tool.sh'
+      - '.github/scripts/update-sbproxy-geodata.sh'
+      - '.github/scripts/rule-set-identity.py'
+      - '.github/scripts/resolve-build-packages.sh'
+      - '.github/workflows/Update-SBProxy.yml'
       - '.github/workflows/Test-SBProxy.yml'
 permissions:
   contents: read

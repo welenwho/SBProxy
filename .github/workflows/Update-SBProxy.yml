@@ -2,25 +2,13 @@ name: 每日检查并更新 SBProxy 数据
 
 on:
   workflow_dispatch:
-    inputs:
-      build_apks:
-        description: 更新后编译并发布 APK
-        required: false
-        default: true
-        type: boolean
   workflow_call:
-    inputs:
-      build_apks:
-        description: 是否在此工作流内编译并发布 APK
-        required: false
-        default: true
-        type: boolean
     outputs:
       package_changed:
-        description: SBProxy 软件包是否发生变更
+        description: 内置规则数据是否写入了新的匹配集合
         value: ${{ jobs.update.outputs.package_changed }}
       packages:
-        description: 需要编译的软件包目录
+        description: 数据更新不发布插件包，因此始终为空
         value: ${{ jobs.update.outputs.packages }}
       source_sha:
         description: 更新后的精确提交 SHA
@@ -81,15 +69,6 @@ jobs:
         id: resources
         run: .github/scripts/update-sbproxy-geodata.sh
 
-      - name: 递增 SBProxy 软件包修订号
-        run: |
-          if [[ -n "$(git status --porcelain -- \
-            luci-app-sbproxy/root/etc/sbproxy/resources \
-            luci-app-sbproxy/root/etc/sbproxy/dashboard)" ]]; then
-            .github/scripts/bump-sbproxy-release.sh
-            .github/scripts/generate-readme.sh
-          fi
-
       - name: 提交数据更新
         id: package_commit
         env:
@@ -100,16 +79,9 @@ jobs:
           ci_commit_and_push \
             "$PACKAGE_BRANCH" \
             "chore: 更新 SBProxy 数据至 $RESOURCE_VERSION" \
-            README.md \
             luci-app-sbproxy
-
-  build:
-    name: 编译并发布 SBProxy APK
-    needs: update
-    if: >-
-      always() && needs.update.outputs.package_changed == 'true' &&
-      inputs.build_apks
-    uses: ./.github/workflows/Build-APK-Packages.yml
-    with:
-      source_sha: ${{ needs.update.outputs.source_sha }}
-      packages: luci-app-sbproxy
+          # Embedded data stays in git for the next real plugin release.
+          # Publishing the same PKG_RELEASE would replace recovery assets
+          # without giving devices a new version to install.
+          ci_write_output packages ''
+          ci_write_output packages_display ''
