@@ -3,7 +3,7 @@
 
 import { readfile, writefile, popen } from 'fs';
 import { urlencode } from 'luci.http';
-import { observe, score, decide } from 'smart_score';
+import { observe, score, eligibleNodes, decide } from 'smart_score';
 
 const plan_path = ARGV[0] || '/var/run/sbproxy/sing-box-c.json.smart.json';
 const plan = json(readfile(plan_path));
@@ -87,11 +87,9 @@ while (true) {
 			}
 			state.bandwidth_at = time();
 		}
-		/* Exclude unmeasured candidates while the current node has a fresh bandwidth result. */
-		const measured = filter(group.nodes, (n) => state.samples[n]?.speed_checked > now - 1200 &&
-			score(state.samples[n], time()) < 1000000000);
-		const eligible = group.bandwidth && length(measured) ? measured : group.nodes;
-		const next = decide(state, state.samples, eligible, current, time());
+		const decision_at = time();
+		const eligible = group.bandwidth ? eligibleNodes(state.samples, group.nodes, current, decision_at) : group.nodes;
+		const next = decide(state, state.samples, eligible, current, decision_at);
 		if (next && select(group.tag, next)) {
 			state.switched = time(); state.wins = 0; state.challenger = null;
 			warn(sprintf('Smart selection: %s -> %s (%s)\n', current, next, group.tag));

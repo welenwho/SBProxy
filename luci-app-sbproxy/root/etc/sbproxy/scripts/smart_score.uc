@@ -9,8 +9,8 @@ export function observe(previous, delays, now) {
 		if (delay < low) low = delay;
 		if (delay > high) high = delay;
 	}
-	const latency = ok ? total / ok : 6000;
-	const loss = 1 - ok / length(delays);
+	const latency = ok ? total * 1.0 / ok : 6000;
+	const loss = length(delays) ? 1.0 - ok * 1.0 / length(delays) : 1.0;
 	const old = previous || {};
 	const delta = old.latency == null ? 0 : (latency > old.latency ? latency - old.latency : old.latency - latency);
 	const spread = ok > 1 ? high - low : 0;
@@ -28,6 +28,19 @@ export function score(sample, now) {
 	const bandwidth = sample.speed > 0 && now - sample.speed_checked < 1200 ?
 		(sample.speed < 8192 ? 8000 : 262144000 / sample.speed * 0.25) : 0;
 	return sample.latency + sample.jitter * 0.25 + sample.loss * 3000 + bandwidth;
+};
+
+export function eligibleNodes(samples, nodes, current, now) {
+	const downloaded = (sample) => sample?.speed > 1 &&
+		sample.speed_checked != null && now - sample.speed_checked < 1200;
+	/* Only compare download results when the active node has a successful,
+	 * fresh result too. A failed download must not pin an otherwise healthy
+	 * node, and recovery must consider every recently healthy candidate. */
+	if (score(samples[current], now) >= 1000000000 || !downloaded(samples[current]))
+		return nodes;
+	const measured = filter(nodes, (node) => downloaded(samples[node]) &&
+		score(samples[node], now) < 1000000000);
+	return length(measured) ? measured : nodes;
 };
 
 export function decide(state, samples, nodes, current, now) {
