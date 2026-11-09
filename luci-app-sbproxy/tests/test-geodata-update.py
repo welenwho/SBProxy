@@ -118,6 +118,8 @@ class UpdateScriptTests(unittest.TestCase):
 
     def run_update(self, repo, bin_dir, bodies, decompile):
         env = dict(os.environ)
+        env.pop("GITHUB_OUTPUT", None)
+        env.pop("GITHUB_STEP_SUMMARY", None)
         env.update({
             "PATH": str(bin_dir) + os.pathsep + env.get("PATH", ""),
             "REPO_ROOT": str(repo),
@@ -254,6 +256,8 @@ class BuildSelectionTests(unittest.TestCase):
             subprocess.run(["git", "commit", "-qm", "data"], cwd=repo, check=True)
             after = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
             env = dict(os.environ, REPO_ROOT=str(repo))
+            env.pop("GITHUB_OUTPUT", None)
+            env.pop("GITHUB_STEP_SUMMARY", None)
             result = subprocess.run(
                 ["bash", str(RESOLVE), "push", before, "", after],
                 cwd=repo, env=env, text=True, capture_output=True, check=True)
