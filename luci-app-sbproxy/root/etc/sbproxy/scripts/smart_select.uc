@@ -3,7 +3,7 @@
 
 import { readfile, writefile, popen } from 'fs';
 import { urlencode } from 'luci.http';
-import { observe, score, eligibleNodes, decide } from 'smart_score';
+import { observe, observeSession, score, eligibleNodes, decide } from 'smart_score';
 
 const plan_path = ARGV[0] || '/var/run/sbproxy/sing-box-c.json.smart.json';
 const plan = json(readfile(plan_path));
@@ -33,6 +33,33 @@ function api(path, data) {
 	try { return json(result); } catch (e) { return null; }
 }
 function select(tag, node) { return api('/proxies/' + urlencode(tag), { name: node }); }
+const log_path = '/var/run/sbproxy/sing-box-c.log';
+let log_offset = 0;
+let pending_node = null;
+const session_error = /context deadline exceeded|i\/o timeout|connection timed out|handshake timeout/;
+function sessionFailures(nodes, probes) {
+	const failed = {};
+	const file = open(log_path, 'r');
+	if (!file) return failed;
+	const size = file.stat()?.size || 0;
+	if (log_offset > size) log_offset = 0;
+	file.seek(log_offset);
+	let line;
+	while ((line = file.read('line')) != null) {
+		const outbound = match(line, /outbound\/[A-Za-z0-9_-]+\[([^\]]+)\]/);
+		if (outbound) pending_node = outbound[1];
+		/* Delay and bandwidth probes use the same outbounds. Count only user
+		 * sessions, which sing-box logs with an inbound. */
+		if (!pending_node || !session_error.test(line) || !match(line, /inbound\//))
+			continue;
+		if (index(nodes, pending_node) >= 0 && index(probes, pending_node) < 0)
+			failed[pending_node] = true;
+		pending_node = null;
+	}
+	log_offset = file.tell();
+	file.close();
+	return failed;
+}
 function speed(node) {
 	if (!select(plan.probe_tag, node)) return null;
 	const result = run('curl --noproxy ' + quote('') + ' --proxy ' +
@@ -70,6 +97,11 @@ while (true) {
 			}
 			state.samples[node] = observe(state.samples[node], delays, time());
 		}
+		const sessions = sessionFailures(group.nodes, [plan.probe_tag, group.fallback]);
+		for (let node in group.nodes) {
+			if (!state.samples[node] && !sessions[node]) continue;
+			state.samples[node] = observeSession(state.samples[node], !!sessions[node], time());
+		}
 		const now = time();
 		if (group.bandwidth && now - state.bandwidth_at >= 600) {
 			const ranked = filter(group.nodes, (n) => score(state.samples[n], now) < 1000000000);
@@ -94,7 +126,8 @@ while (true) {
 			state.switched = time(); state.wins = 0; state.challenger = null;
 			warn(sprintf('Smart selection: %s -> %s (%s)\n', current, next, group.tag));
 		}
-		if (state.samples[current]?.failures > 0) urgent = true;
+		if (state.samples[current]?.failures > 0 || state.samples[current]?.session_failures > 0)
+			urgent = true;
 		writefile(plan_path + '.status', sprintf('%.J\n', states));
 	}
 	const elapsed = time() - started;

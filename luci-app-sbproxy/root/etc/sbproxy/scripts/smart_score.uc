@@ -17,9 +17,24 @@ export function observe(previous, delays, now) {
 	return {
 		...old, checked: now, healthy: ok >= 2,
 		failures: ok >= 2 ? 0 : (old.failures || 0) + 1,
+		/* A successful probe does not prove the node can finish a real TLS
+		 * session. Keep session failures until a later cycle clears them. */
+		session_failures: old.session_failures || 0,
 		latency: old.latency == null ? latency : old.latency * 0.6 + latency * 0.4,
 		jitter: old.jitter == null ? spread : old.jitter * 0.6 + (spread + delta) * 0.4,
 		loss: old.loss == null ? loss : old.loss * 0.6 + loss * 0.4
+	};
+};
+
+/* Real outbound failures are independent of the HTTPS probe. One cycle of
+ * repeated dial or handshake timeouts counts as one session failure. */
+export function observeSession(previous, failed, now) {
+	const old = previous || {};
+	const count = old.session_failures || 0;
+	return {
+		...old, checked: old.checked == null ? now : old.checked,
+		session_at: now,
+		session_failures: failed ? count + 1 : 0
 	};
 };
 
@@ -54,8 +69,13 @@ export function decide(state, samples, nodes, current, now) {
 		return null;
 	}
 	const active = samples[current];
-	/* Never treat stale/unprobed state as proof of failure. */
-	const failed = active && now - active.checked <= 180 && active.failures >= 2;
+	/* Never treat stale/unprobed state as proof of failure. A fresh real
+	 * session timeout is proof even when the lightweight probe still passes. */
+	const failed = active && (
+		(now - active.checked <= 180 && active.failures >= 2) ||
+		(active.session_at != null && now - active.session_at <= 180 &&
+			active.session_failures >= 2)
+	);
 	const bootstrap = current === state.fallback;
 	const current_score = score(active, now);
 	if (bootstrap || failed) {

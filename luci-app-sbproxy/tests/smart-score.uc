@@ -1,5 +1,5 @@
 'use strict';
-import { observe, score, eligibleNodes, decide } from 'smart_score';
+import { observe, observeSession, score, eligibleNodes, decide } from 'smart_score';
 function assert(ok, message) { if (!ok) die(message); }
 const now = 10000;
 const fast = observe(null, [80, 90, 100], now);
@@ -50,4 +50,18 @@ delete bandwidth_samples.fast.speed_checked;
 const recovery_nodes = eligibleNodes(bandwidth_samples, nodes, 'slow', now);
 state = { fallback: 'fallback', switched: now - 10 };
 assert(length(recovery_nodes) === 2 && decide(state, bandwidth_samples, recovery_nodes, 'slow', now) === 'fast', 'Outage recovery includes unmeasured healthy nodes');
+
+/* A passing probe must not erase a real session timeout. */
+let probed = observe(null, [360, 370, 380], now);
+probed = observeSession(probed, true, now);
+assert(probed.healthy && probed.failures === 0 && probed.session_failures === 1, 'Probe success keeps the session failure');
+probed = observe(probed, [360, 370, 380], now + 60);
+assert(probed.session_failures === 1, 'Another successful probe does not clear session failures');
+state = { fallback: 'fallback', switched: now - 10 };
+assert(!decide(state, { slow: probed, fast }, ['fast', 'slow'], 'slow', now + 60), 'One session cycle is held');
+probed = observeSession(probed, true, now + 70);
+assert(decide(state, { slow: probed, fast }, ['fast', 'slow'], 'slow', now + 70) === 'fast', 'Repeated session timeouts bypass cooldown');
+probed = observeSession(probed, false, now + 80);
+assert(probed.session_failures === 0, 'A clean cycle clears session failures');
+assert(!decide({ fallback: 'fallback', switched: now - 10 }, { slow: {...probed, session_failures: 2, session_at: now - 181}, fast }, ['fast', 'slow'], 'slow', now), 'Stale session failure is not proof');
 print('Smart selection scoring and switching passed\n');
