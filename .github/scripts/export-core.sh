@@ -30,7 +30,15 @@ if grep -q INTERP "$extract/elf.txt"; then fail 'Core requires a dynamic ELF int
 readelf -d "$binary" > "$extract/dynamic.txt"
 if grep -q NEEDED "$extract/dynamic.txt"; then fail 'Core requires shared libraries'; fi
 run_core() {
-    if [[ "$arch" == arm64 ]]; then qemu-aarch64-static "$binary" "$@"; else "$binary" "$@"; fi
+    if [[ "$arch" != arm64 ]]; then
+        "$binary" "$@"
+        return
+    fi
+    if command -v qemu-aarch64-static >/dev/null 2>&1; then
+        qemu-aarch64-static "$binary" "$@"
+    else
+        qemu-aarch64 "$binary" "$@"
+    fi
 }
 stage=version-and-features
 run_core version > "$extract/version.txt"
