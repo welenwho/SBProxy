@@ -496,10 +496,11 @@ return view.extend({
 		o.retain = true;
 
 		o = s.taboption('dashboard', form.ListValue, 'dashboard_ui', _('Dashboard'),
-			_('Both dashboards stay installed. sing-box serves the selected one at the same address; apply the change to switch.'));
+			_('All dashboards stay installed. Update resources once so Yacd-meta and MetaCubeXD are downloaded, then apply the change. Yacd-meta and MetaCubeXD open at /ui/; the sing-box dashboard opens at /dashboard/.'));
 		proxyModeDepends(o, { dashboard_enabled: '1' });
 		o.value('singbox', _('sing-box dashboard'));
 		o.value('yacd', _('Yacd-meta'));
+		o.value('metacubexd', _('MetaCubeXD'));
 		o.default = 'singbox';
 		o.rmempty = false;
 		o.retain = true;
@@ -563,7 +564,9 @@ return view.extend({
 			if (host.includes(':') && !host.startsWith('['))
 				host = '[' + host + ']';
 			const scheme = uci.get('sbproxy', 'config', 'dashboard_tls_tailscale') === '1' ? 'https://' : 'http://';
-			window.open(scheme + host + ':' + port + '/dashboard/', '_blank', 'noopener,noreferrer');
+			const ui = uci.get('sbproxy', 'config', 'dashboard_ui');
+			const path = (ui === 'yacd' || ui === 'metacubexd') ? '/ui/' : '/dashboard/';
+			window.open(scheme + host + ':' + port + path, '_blank', 'noopener,noreferrer');
 		};
 
 		o = s.taboption('diversion', form.SectionValue, '_domain_groups', form.GridSection, 'domain_route', _('Diversion groups'),

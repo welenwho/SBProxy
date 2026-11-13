@@ -7,6 +7,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}"
 RESOURCES_DIR="$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/resources"
 DASHBOARD_DIR="${SINGBOX_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard}"
 YACD_DIR="${YACD_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd}"
+METACUBEXD_DIR="${METACUBEXD_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard-metacubexd}"
 
 GEOIP_SOURCE="${GEOIP_SOURCE:-https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set/geoip-cn.srs}"
 GEOIP_VERSION_URL="${GEOIP_VERSION_URL:-https://github.com/SagerNet/sing-geoip/releases/latest}"
@@ -16,6 +17,8 @@ DASHBOARD_SOURCE="${DASHBOARD_SOURCE:-https://codeload.github.com/SagerNet/sing-
 DASHBOARD_VERSION_URL="${DASHBOARD_VERSION_URL:-https://github.com/SagerNet/sing-box-dashboard/commits/gh-pages.atom}"
 YACD_SOURCE="${YACD_SOURCE:-https://codeload.github.com/MetaCubeX/Yacd-meta/zip/refs/heads/gh-pages}"
 YACD_VERSION_URL="${YACD_VERSION_URL:-https://github.com/MetaCubeX/Yacd-meta/commits/gh-pages.atom}"
+METACUBEXD_SOURCE="${METACUBEXD_SOURCE:-https://codeload.github.com/MetaCubeX/metacubexd/zip/refs/heads/gh-pages}"
+METACUBEXD_VERSION_URL="${METACUBEXD_VERSION_URL:-https://github.com/MetaCubeX/metacubexd/commits/gh-pages.atom}"
 USER_AGENT="${USER_AGENT:-SBProxy resource preset}"
 SING_BOX="${SING_BOX:-}"
 
@@ -25,7 +28,8 @@ TEMP_DIR="$(mktemp -d)" || {
 }
 DASHBOARD_STAGE="${DASHBOARD_DIR}.new.$$"
 YACD_STAGE="${YACD_DIR}.new.$$"
-trap 'rm -rf -- "$TEMP_DIR" "$DASHBOARD_STAGE" "$YACD_STAGE"' EXIT INT TERM
+METACUBEXD_STAGE="${METACUBEXD_DIR}.new.$$"
+trap 'rm -rf -- "$TEMP_DIR" "$DASHBOARD_STAGE" "$YACD_STAGE" "$METACUBEXD_STAGE"' EXIT INT TERM
 
 warn() {
 	echo "WARNING: $*" >&2
@@ -170,7 +174,7 @@ print("\n".join(rows))
 PY
 }
 
-mkdir -p -- "$RESOURCES_DIR" "$DASHBOARD_DIR" "$YACD_DIR"
+mkdir -p -- "$RESOURCES_DIR" "$DASHBOARD_DIR" "$YACD_DIR" "$METACUBEXD_DIR"
 update_failed=0
 geoip_version=""
 geosite_version=""
@@ -270,6 +274,8 @@ install_dashboard dashboard "$DASHBOARD_SOURCE" "$DASHBOARD_VERSION_URL" \
 	"$DASHBOARD_DIR" "$DASHBOARD_STAGE"
 install_dashboard yacd "$YACD_SOURCE" "$YACD_VERSION_URL" \
 	"$YACD_DIR" "$YACD_STAGE"
+install_dashboard metacubexd "$METACUBEXD_SOURCE" "$METACUBEXD_VERSION_URL" \
+	"$METACUBEXD_DIR" "$METACUBEXD_STAGE"
 
 resource_version="${changed_notes[*]:-unchanged}"
 set_output version "$resource_version"

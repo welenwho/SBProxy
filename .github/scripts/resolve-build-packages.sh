@@ -85,7 +85,8 @@ else
 					"$package"/root/etc/sbproxy/resources/*|\
 					"$package"/root/etc/sbproxy/dashboard/*|\
 					"$package"/root/etc/sbproxy/dashboard-singbox/*|\
-					"$package"/root/etc/sbproxy/dashboard-yacd/*) ;;
+					"$package"/root/etc/sbproxy/dashboard-yacd/*|\
+					"$package"/root/etc/sbproxy/dashboard-metacubexd/*) ;;
 					*) only_nonbuild_files=false ;;
 				esac
 			done

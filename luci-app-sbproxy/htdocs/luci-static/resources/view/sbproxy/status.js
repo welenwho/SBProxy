@@ -182,6 +182,10 @@ const resources = [
 	{
 		type: 'yacd',
 		name: _('Yacd-meta')
+	},
+	{
+		type: 'metacubexd',
+		name: _('MetaCubeXD')
 	}
 ];
 

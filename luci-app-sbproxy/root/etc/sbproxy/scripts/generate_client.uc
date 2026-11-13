@@ -180,6 +180,9 @@ const udp_timeout = uci.get(uciconfig, routing_mode === 'custom' ? uciroutingset
 
 const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'warn';
 const dashboard_path = SB_DIR + '/dashboard';
+const dashboard_ui_value = uci.get(uciconfig, ucimain, 'dashboard_ui');
+const dashboard_ui = dashboard_ui_value in ['yacd', 'metacubexd'] ? dashboard_ui_value : 'singbox';
+const dashboard_uses_clash = dashboard_ui in ['yacd', 'metacubexd'];
 const dashboard_enabled = routing_mode !== 'disabled' &&
       uci.get(uciconfig, ucimain, 'dashboard_enabled') === '1' &&
       !isEmpty(readfile(dashboard_path + '/index.html')),
@@ -1493,7 +1496,10 @@ const enable_cache_file = proxy_client_enabled &&
 if (enable_clash_api || enable_cache_file) {
 	config.experimental = {
 		clash_api: enable_clash_api ? {
-			external_controller: `127.0.0.1:${clash_api_port}`
+			external_controller: dashboard_enabled && dashboard_uses_clash ?
+				`0.0.0.0:${dashboard_port}` : `127.0.0.1:${clash_api_port}`,
+			external_ui: dashboard_enabled && dashboard_uses_clash ? dashboard_path : null,
+			secret: dashboard_enabled && dashboard_uses_clash ? dashboard_secret : null
 		} : null,
 		cache_file: enable_cache_file ? {
 			enabled: true,
@@ -1513,7 +1519,9 @@ if (tailscale_enabled)
 		listen: '127.0.0.1',
 		listen_port: tailscale_api_port
 	});
-if (dashboard_enabled)
+/* Yacd and MetaCubeXD speak the Clash API. The sing-box API service serves a
+ * different protocol, so that listener stays off while either is selected. */
+if (dashboard_enabled && !dashboard_uses_clash)
 	push(config.services, {
 		type: 'api',
 		tag: 'api',

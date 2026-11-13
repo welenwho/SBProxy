@@ -902,9 +902,10 @@ msgstr "仪表盘"
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:497
 msgid ""
-"Both dashboards stay installed. sing-box serves the selected one at the "
-"same address; apply the change to switch."
-msgstr "两种仪表盘都会保留。sing-box 在同一地址提供当前选中的一份，应用后切换。"
+"All dashboards stay installed. Update resources once so Yacd-meta and "
+"MetaCubeXD are downloaded, then apply the change. Yacd-meta and MetaCubeXD "
+"open at /ui/; the sing-box dashboard opens at /dashboard/."
+msgstr "三种仪表盘都会保留。先在状态页更新一次资源，下载 Yacd-meta 和 MetaCubeXD，再应用。Yacd-meta 和 MetaCubeXD 打开 /ui/，sing-box 仪表盘打开 /dashboard/。"
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:501
 msgid "Dashboard MagicDNS name"
@@ -5029,6 +5030,11 @@ msgstr "sing-box 仪表盘"
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:184
 msgid "Yacd-meta"
 msgstr "Yacd-meta"
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:503
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:188
+msgid "MetaCubeXD"
+msgstr "MetaCubeXD"
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:482
 msgid ""

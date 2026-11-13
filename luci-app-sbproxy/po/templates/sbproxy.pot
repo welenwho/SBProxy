@@ -876,8 +876,9 @@ msgstr ""
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:497
 msgid ""
-"Both dashboards stay installed. sing-box serves the selected one at the "
-"same address; apply the change to switch."
+"All dashboards stay installed. Update resources once so Yacd-meta and "
+"MetaCubeXD are downloaded, then apply the change. Yacd-meta and MetaCubeXD "
+"open at /ui/; the sing-box dashboard opens at /dashboard/."
 msgstr ""
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:501
@@ -4900,6 +4901,11 @@ msgstr ""
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:501
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:184
 msgid "Yacd-meta"
+msgstr ""
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:503
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:188
+msgid "MetaCubeXD"
 msgstr ""
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:482

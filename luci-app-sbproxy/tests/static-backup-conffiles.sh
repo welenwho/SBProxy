@@ -22,6 +22,7 @@ for path in \
 	'/etc/sbproxy/dashboard/' \
 	'/etc/sbproxy/dashboard-singbox/' \
 	'/etc/sbproxy/dashboard-yacd/' \
+	'/etc/sbproxy/dashboard-metacubexd/' \
 	'/etc/sbproxy/retired-adaptive/'
 do
 	if grep -Fq "$path" "$MAKEFILE"; then

@@ -40,14 +40,17 @@ if [ -f /etc/sysupgrade.conf ]; then
 		-e '\|^/etc/sbproxy/dashboard/$|d' \
 		-e '\|^/etc/sbproxy/dashboard-singbox/$|d' \
 		-e '\|^/etc/sbproxy/dashboard-yacd/$|d' \
+		-e '\|^/etc/sbproxy/dashboard-metacubexd/$|d' \
 		-e '\|^/etc/sbproxy/tailscale/$|d' \
 		/etc/sysupgrade.conf
 fi
 
 rm -rf /tmp/luci-*
 [ -x /usr/libexec/sbproxy-dashboard-select ] && /usr/libexec/sbproxy-dashboard-select
-rm -f /etc/sbproxy/dashboard/.etag /etc/sbproxy/dashboard-singbox/.etag /etc/sbproxy/dashboard-yacd/.etag
-for dashboard_dir in /etc/sbproxy/dashboard /etc/sbproxy/dashboard-singbox /etc/sbproxy/dashboard-yacd; do
+rm -f /etc/sbproxy/dashboard/.etag /etc/sbproxy/dashboard-singbox/.etag \
+	/etc/sbproxy/dashboard-yacd/.etag /etc/sbproxy/dashboard-metacubexd/.etag
+for dashboard_dir in /etc/sbproxy/dashboard /etc/sbproxy/dashboard-singbox \
+	/etc/sbproxy/dashboard-yacd /etc/sbproxy/dashboard-metacubexd; do
 	[ ! -d "$dashboard_dir" ] || chmod -R a+rX "$dashboard_dir"
 done
 [ ! -f /var/run/sbproxy/sing-box-c.json ] || \
