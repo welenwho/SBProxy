@@ -107,11 +107,12 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get -qq update
-          # Ubuntu 26 replaced qemu-user-static with qemu-user. Older images
-          # still publish the transitional package name.
-          qemu_package=qemu-user-static
-          if ! apt-cache show qemu-user-static >/dev/null 2>&1; then
-            qemu_package=qemu-user
+          # Ubuntu 26 keeps qemu-user-static as a virtual package with no
+          # installation candidate. Install whichever package apt can use.
+          qemu_package=qemu-user
+          if apt-cache policy qemu-user-static | grep -q 'Candidate:' && \
+             ! apt-cache policy qemu-user-static | grep -q 'Candidate: (none)'; then
+            qemu_package=qemu-user-static
           fi
           sudo apt-get -qq install --no-install-recommends \
             build-essential clang flex bison g++ gawk gettext git \
