@@ -5,7 +5,8 @@ set -u
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}"
 RESOURCES_DIR="$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/resources"
-DASHBOARD_DIR="$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard"
+DASHBOARD_DIR="${SINGBOX_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard}"
+YACD_DIR="${YACD_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd}"
 
 GEOIP_SOURCE="${GEOIP_SOURCE:-https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set/geoip-cn.srs}"
 GEOIP_VERSION_URL="${GEOIP_VERSION_URL:-https://github.com/SagerNet/sing-geoip/releases/latest}"
@@ -13,6 +14,8 @@ GEOSITE_SOURCE="${GEOSITE_SOURCE:-https://cdn.jsdelivr.net/gh/SagerNet/sing-geos
 GEOSITE_VERSION_URL="${GEOSITE_VERSION_URL:-https://github.com/SagerNet/sing-geosite/releases/latest}"
 DASHBOARD_SOURCE="${DASHBOARD_SOURCE:-https://codeload.github.com/SagerNet/sing-box-dashboard/zip/refs/heads/gh-pages}"
 DASHBOARD_VERSION_URL="${DASHBOARD_VERSION_URL:-https://github.com/SagerNet/sing-box-dashboard/commits/gh-pages.atom}"
+YACD_SOURCE="${YACD_SOURCE:-https://codeload.github.com/MetaCubeX/Yacd-meta/zip/refs/heads/gh-pages}"
+YACD_VERSION_URL="${YACD_VERSION_URL:-https://github.com/MetaCubeX/Yacd-meta/commits/gh-pages.atom}"
 USER_AGENT="${USER_AGENT:-SBProxy resource preset}"
 SING_BOX="${SING_BOX:-}"
 
@@ -21,7 +24,8 @@ TEMP_DIR="$(mktemp -d)" || {
 	exit 1
 }
 DASHBOARD_STAGE="${DASHBOARD_DIR}.new.$$"
-trap 'rm -rf -- "$TEMP_DIR" "$DASHBOARD_STAGE"' EXIT INT TERM
+YACD_STAGE="${YACD_DIR}.new.$$"
+trap 'rm -rf -- "$TEMP_DIR" "$DASHBOARD_STAGE" "$YACD_STAGE"' EXIT INT TERM
 
 warn() {
 	echo "WARNING: $*" >&2
@@ -51,10 +55,18 @@ fetch_release_version() {
 }
 
 fetch_dashboard_version() {
+	fetch_feed_version "$DASHBOARD_VERSION_URL"
+}
+
+fetch_yacd_version() {
+	fetch_feed_version "$YACD_VERSION_URL"
+}
+
+fetch_feed_version() {
 	local feed version
 	feed="$(curl -fsSL --compressed --retry 3 --retry-all-errors \
 		--retry-delay 1 --connect-timeout 10 --max-time 30 \
-		-A "$USER_AGENT" "$DASHBOARD_VERSION_URL")" || return 1
+		-A "$USER_AGENT" "$1")" || return 1
 	version="$(awk -F '[<>]' '
 		/<updated>/ {
 			version = $3
@@ -158,11 +170,10 @@ print("\n".join(rows))
 PY
 }
 
-mkdir -p -- "$RESOURCES_DIR" "$DASHBOARD_DIR"
+mkdir -p -- "$RESOURCES_DIR" "$DASHBOARD_DIR" "$YACD_DIR"
 update_failed=0
 geoip_version=""
 geosite_version=""
-dashboard_version=""
 changed_notes=()
 
 geoip_ready=1
@@ -195,56 +206,70 @@ else
 	update_failed=1
 fi
 
-dashboard_ready=1
-dashboard_version="$(fetch_dashboard_version)" || dashboard_ready=0
-if [[ "$dashboard_ready" -eq 1 ]] && \
-	! download "${DASHBOARD_SOURCE}?v=${dashboard_version}" "$TEMP_DIR/dashboard.zip"; then
-	dashboard_ready=0
-fi
-if [[ "$dashboard_ready" -eq 1 ]] && ! unzip -q "$TEMP_DIR/dashboard.zip" -d "$TEMP_DIR/dashboard"; then
-	dashboard_ready=0
-fi
-dashboard_source_dir=""
-if [[ "$dashboard_ready" -eq 1 ]]; then
-	for dashboard_index in "$TEMP_DIR/dashboard/index.html" "$TEMP_DIR"/dashboard/*/index.html; do
-		if [[ -f "$dashboard_index" ]]; then
-			dashboard_source_dir="${dashboard_index%/index.html}"
-			break
+install_dashboard() {
+	local label="$1"
+	local source_url="$2"
+	local version_url="$3"
+	local target_dir="$4"
+	local stage_dir="$5"
+	local ready=1
+	local version source_dir index current_manifest stage_manifest
+
+	version="$(fetch_feed_version "$version_url")" || ready=0
+	if [[ "$ready" -eq 1 ]] && \
+		! download "${source_url}?v=${version}" "$TEMP_DIR/${label}.zip"; then
+		ready=0
+	fi
+	if [[ "$ready" -eq 1 ]] && ! unzip -q "$TEMP_DIR/${label}.zip" -d "$TEMP_DIR/${label}"; then
+		ready=0
+	fi
+	source_dir=""
+	if [[ "$ready" -eq 1 ]]; then
+		for index in "$TEMP_DIR/${label}/index.html" "$TEMP_DIR"/${label}/*/index.html; do
+			if [[ -f "$index" ]]; then
+				source_dir="${index%/index.html}"
+				break
+			fi
+		done
+		[[ -f "$source_dir/index.html" ]] || ready=0
+	fi
+	if [[ "$ready" -eq 1 ]]; then
+		rm -rf -- "$stage_dir"
+		if mkdir -p -- "$stage_dir" && \
+			cp -a -- "$source_dir/." "$stage_dir/" && \
+			normalize_dashboard_javascript "$stage_dir" && \
+			printf '%s\n' "$version" > "$stage_dir/dashboard.ver"; then
+			rm -f -- "$stage_dir/.etag"
+			chmod -R a+rX "$stage_dir"
+		else
+			ready=0
 		fi
-	done
-	[[ -f "$dashboard_source_dir/index.html" ]] || dashboard_ready=0
-fi
-if [[ "$dashboard_ready" -eq 1 ]]; then
-	rm -rf -- "$DASHBOARD_STAGE"
-	if mkdir -p -- "$DASHBOARD_STAGE" && \
-		cp -a -- "$dashboard_source_dir/." "$DASHBOARD_STAGE/" && \
-		normalize_dashboard_javascript "$DASHBOARD_STAGE" && \
-		printf '%s\n' "$dashboard_version" > "$DASHBOARD_STAGE/dashboard.ver"; then
-		rm -f -- "$DASHBOARD_STAGE/.etag"
-		chmod -R a+rX "$DASHBOARD_STAGE"
-	else
-		dashboard_ready=0
 	fi
-fi
-if [[ "$dashboard_ready" -eq 1 ]]; then
-	current_manifest="$(dashboard_manifest "$DASHBOARD_DIR")" || dashboard_ready=0
-	stage_manifest="$(dashboard_manifest "$DASHBOARD_STAGE")" || dashboard_ready=0
-fi
-if [[ "$dashboard_ready" -eq 1 ]]; then
-	if [[ -f "$DASHBOARD_DIR/index.html" && "$current_manifest" == "$stage_manifest" ]]; then
-		echo "SBProxy dashboard unchanged (upstream ${dashboard_version})"
-		rm -rf -- "$DASHBOARD_STAGE"
-	elif rm -rf -- "$DASHBOARD_DIR" && mv -- "$DASHBOARD_STAGE" "$DASHBOARD_DIR"; then
-		echo "SBProxy dashboard: $dashboard_version"
-		changed_notes+=("dashboard ${dashboard_version}")
-	else
-		dashboard_ready=0
+	if [[ "$ready" -eq 1 ]]; then
+		current_manifest="$(dashboard_manifest "$target_dir")" || ready=0
+		stage_manifest="$(dashboard_manifest "$stage_dir")" || ready=0
 	fi
-fi
-if [[ "$dashboard_ready" -ne 1 ]]; then
-	warn "Failed to update SBProxy dashboard; continuing."
-	update_failed=1
-fi
+	if [[ "$ready" -eq 1 ]]; then
+		if [[ -f "$target_dir/index.html" && "$current_manifest" == "$stage_manifest" ]]; then
+			echo "SBProxy ${label} unchanged (upstream ${version})"
+			rm -rf -- "$stage_dir"
+		elif rm -rf -- "$target_dir" && mv -- "$stage_dir" "$target_dir"; then
+			echo "SBProxy ${label}: $version"
+			changed_notes+=("${label} ${version}")
+		else
+			ready=0
+		fi
+	fi
+	if [[ "$ready" -ne 1 ]]; then
+		warn "Failed to update SBProxy ${label}; continuing."
+		update_failed=1
+	fi
+}
+
+install_dashboard dashboard "$DASHBOARD_SOURCE" "$DASHBOARD_VERSION_URL" \
+	"$DASHBOARD_DIR" "$DASHBOARD_STAGE"
+install_dashboard yacd "$YACD_SOURCE" "$YACD_VERSION_URL" \
+	"$YACD_DIR" "$YACD_STAGE"
 
 resource_version="${changed_notes[*]:-unchanged}"
 set_output version "$resource_version"

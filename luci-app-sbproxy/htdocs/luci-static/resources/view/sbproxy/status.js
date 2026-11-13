@@ -177,7 +177,11 @@ const resources = [
 	},
 	{
 		type: 'dashboard',
-		name: _('Dashboard')
+		name: _('sing-box dashboard')
+	},
+	{
+		type: 'yacd',
+		name: _('Yacd-meta')
 	}
 ];
 

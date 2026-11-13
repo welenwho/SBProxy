@@ -31,8 +31,11 @@ then
 fi
 
 rm -rf /tmp/luci-*
-rm -f /etc/sbproxy/dashboard/.etag
-[ ! -d /etc/sbproxy/dashboard ] || chmod -R a+rX /etc/sbproxy/dashboard
+[ -x /usr/libexec/sbproxy-dashboard-select ] && /usr/libexec/sbproxy-dashboard-select
+rm -f /etc/sbproxy/dashboard/.etag /etc/sbproxy/dashboard-singbox/.etag /etc/sbproxy/dashboard-yacd/.etag
+for dashboard_dir in /etc/sbproxy/dashboard /etc/sbproxy/dashboard-singbox /etc/sbproxy/dashboard-yacd; do
+	[ ! -d "$dashboard_dir" ] || chmod -R a+rX "$dashboard_dir"
+done
 [ ! -f /var/run/sbproxy/sing-box-c.json ] || \
 	/etc/init.d/sbproxy restart >/dev/null 2>&1 || \
 	printf '%s\n' 'SBProxy: failed to restart the running service after upgrade.' >&2

@@ -869,8 +869,15 @@ msgid "DTLS"
 msgstr ""
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:245
-#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:180
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:498
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:554
 msgid "Dashboard"
+msgstr ""
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:497
+msgid ""
+"Both dashboards stay installed. sing-box serves the selected one at the "
+"same address; apply the change to switch."
 msgstr ""
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:501
@@ -4885,8 +4892,14 @@ msgstr ""
 msgid "sing-box Server"
 msgstr ""
 
-#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:507
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:500
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:180
 msgid "sing-box dashboard"
+msgstr ""
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:501
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:184
+msgid "Yacd-meta"
 msgstr ""
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:482

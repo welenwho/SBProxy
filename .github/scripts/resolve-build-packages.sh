@@ -83,7 +83,9 @@ else
 				case "$path" in
 					"$package/README"|"$package/README.md"|\
 					"$package"/root/etc/sbproxy/resources/*|\
-					"$package"/root/etc/sbproxy/dashboard/*) ;;
+					"$package"/root/etc/sbproxy/dashboard/*|\
+					"$package"/root/etc/sbproxy/dashboard-singbox/*|\
+					"$package"/root/etc/sbproxy/dashboard-yacd/*) ;;
 					*) only_nonbuild_files=false ;;
 				esac
 			done

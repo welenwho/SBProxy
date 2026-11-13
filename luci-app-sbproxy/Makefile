@@ -24,7 +24,7 @@ LUCI_EXTRA_DEPENDS:=sing-box (>=1.14.0)
 
 PKG_NAME:=luci-app-sbproxy
 PKG_VERSION:=1.0.2
-PKG_RELEASE:=8
+PKG_RELEASE:=9
 PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 
 define Package/luci-app-sbproxy/conffiles
@@ -34,6 +34,8 @@ define Package/luci-app-sbproxy/conffiles
 /etc/sbproxy/certs/
 /etc/sbproxy/core/
 /etc/sbproxy/dashboard/
+/etc/sbproxy/dashboard-singbox/
+/etc/sbproxy/dashboard-yacd/
 /etc/sbproxy/ruleset/
 /etc/sbproxy/resources/direct_list.txt
 /etc/sbproxy/resources/proxy_list.txt

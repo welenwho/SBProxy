@@ -38,7 +38,7 @@ function visible(field, state) {
 }
 for (const mode of ['disabled', 'bypass_mainland_china', 'custom', 'global']) {
   const state = { routing_mode: mode, main_node: 'urltest', routing_port: 'common', ipv6_support: '1',
-    dashboard_enabled: '1', dashboard_allow_tailscale: '1', dashboard_tls_tailscale: '1' };
+    dashboard_enabled: '1', dashboard_ui: 'singbox', dashboard_allow_tailscale: '1', dashboard_tls_tailscale: '1' };
   const shown = fields.filter(f => visible(f, state));
   assert.equal(shown[0].name, 'routing_mode');
   if (mode === 'disabled') {

@@ -895,9 +895,16 @@ msgid "DTLS"
 msgstr "DTLS"
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:245
-#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:180
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:498
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:554
 msgid "Dashboard"
 msgstr "仪表盘"
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:497
+msgid ""
+"Both dashboards stay installed. sing-box serves the selected one at the "
+"same address; apply the change to switch."
+msgstr "两种仪表盘都会保留。sing-box 在同一地址提供当前选中的一份，应用后切换。"
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:501
 msgid "Dashboard MagicDNS name"
@@ -5013,9 +5020,15 @@ msgstr "sing-box 客户端"
 msgid "sing-box Server"
 msgstr "sing-box 服务端"
 
-#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:507
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:500
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:180
 msgid "sing-box dashboard"
 msgstr "sing-box 仪表盘"
+
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js:501
+#: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/status.js:184
+msgid "Yacd-meta"
+msgstr "Yacd-meta"
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:482
 msgid ""

@@ -262,6 +262,9 @@ setDefault('infra', 'tailscale_api_port_initialized', '0');
 setDefault('config', 'main_urltest_interval', '180');
 setDefault('config', 'main_urltest_tolerance', '50');
 setDefault('config', 'main_urltest_interrupt_exist_connections', '0');
+setDefault('config', 'dashboard_ui', 'singbox');
+if (!(uci.get(uciconfig, 'config', 'dashboard_ui') in ['singbox', 'yacd']))
+	uci.set(uciconfig, 'config', 'dashboard_ui', 'singbox');
 setDefault('config', 'dashboard_allow_tailscale', '0');
 setDefault('config', 'dashboard_tls_tailscale', '0');
 setDefault('config', 'dashboard_tls_name', '');

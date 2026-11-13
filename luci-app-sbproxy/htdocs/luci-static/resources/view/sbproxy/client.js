@@ -495,6 +495,15 @@ return view.extend({
 		o.rmempty = false;
 		o.retain = true;
 
+		o = s.taboption('dashboard', form.ListValue, 'dashboard_ui', _('Dashboard'),
+			_('Both dashboards stay installed. sing-box serves the selected one at the same address; apply the change to switch.'));
+		proxyModeDepends(o, { dashboard_enabled: '1' });
+		o.value('singbox', _('sing-box dashboard'));
+		o.value('yacd', _('Yacd-meta'));
+		o.default = 'singbox';
+		o.rmempty = false;
+		o.retain = true;
+
 		o = s.taboption('dashboard', form.Value, 'dashboard_port', _('Listen port'),
 			_('A random available port is assigned on first installation.'));
 		proxyModeDepends(o, { dashboard_enabled: '1' });
@@ -543,7 +552,7 @@ return view.extend({
 		o.rmempty = false;
 		o.retain = true;
 
-		o = s.taboption('dashboard', form.Button, '_open_dashboard', _('sing-box dashboard'));
+		o = s.taboption('dashboard', form.Button, '_open_dashboard', _('Dashboard'));
 		o.inputtitle = _('Open dashboard');
 		o.inputstyle = 'apply';
 		proxyModeDepends(o, { dashboard_enabled: '1' });

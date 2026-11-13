@@ -7,6 +7,8 @@ NAME="sbproxy"
 
 RESOURCES_DIR="${RESOURCES_DIR:-/etc/$NAME/resources}"
 DASHBOARD_DIR="${DASHBOARD_DIR:-/etc/$NAME/dashboard}"
+SINGBOX_DASHBOARD_DIR="${SINGBOX_DASHBOARD_DIR:-/etc/$NAME/dashboard-singbox}"
+YACD_DASHBOARD_DIR="${YACD_DASHBOARD_DIR:-/etc/$NAME/dashboard-yacd}"
 RUN_DIR="${RUN_DIR:-/var/run/$NAME}"
 LOG_PATH="$RUN_DIR/$NAME.log"
 RESULT_PATH="$RUN_DIR/update_resources.result"
@@ -16,11 +18,14 @@ GEOSITE_SOURCE="${GEOSITE_SOURCE:-https://cdn.jsdelivr.net/gh/SagerNet/sing-geos
 GEOSITE_VERSION_URL="${GEOSITE_VERSION_URL:-https://github.com/SagerNet/sing-geosite/releases/latest}"
 DASHBOARD_SOURCE="${DASHBOARD_SOURCE:-https://codeload.github.com/SagerNet/sing-box-dashboard/zip/refs/heads/gh-pages}"
 DASHBOARD_VERSION_URL="${DASHBOARD_VERSION_URL:-https://github.com/SagerNet/sing-box-dashboard/commits/gh-pages.atom}"
+YACD_SOURCE="${YACD_SOURCE:-https://codeload.github.com/MetaCubeX/Yacd-meta/zip/refs/heads/gh-pages}"
+YACD_VERSION_URL="${YACD_VERSION_URL:-https://github.com/MetaCubeX/Yacd-meta/commits/gh-pages.atom}"
 USER_AGENT="SBProxy resource updater"
 UPDATE_PROXY="${SBPROXY_UPDATE_PROXY:-}"
 SING_BOX="${SING_BOX:-/usr/bin/sing-box}"
+DASHBOARD_SELECT="${DASHBOARD_SELECT:-/usr/libexec/sbproxy-dashboard-select}"
 
-if ! mkdir -p "$RESOURCES_DIR" "$DASHBOARD_DIR" "$RUN_DIR"; then
+if ! mkdir -p "$RESOURCES_DIR" "$SINGBOX_DASHBOARD_DIR" "$YACD_DASHBOARD_DIR" "$RUN_DIR"; then
 	printf '%s\n' "Failed to prepare SBProxy resource directories." >&2
 	exit 1
 fi
@@ -102,11 +107,12 @@ fetch_release_version() {
 	printf '%s\n' "$release_version"
 }
 
-fetch_dashboard_version() {
+fetch_feed_version() {
+	local feed_url="$1"
 	local feed version
 
 	feed="$(run_curl -fsSL --compressed --retry 3 --retry-all-errors --retry-delay 1 \
-		--connect-timeout 10 --max-time 30 -A "$USER_AGENT" "$DASHBOARD_VERSION_URL")" || return 1
+		--connect-timeout 10 --max-time 30 -A "$USER_AGENT" "$feed_url")" || return 1
 	version="$(printf '%s\n' "$feed" | awk -F '[<>]' '
 		/<updated>/ {
 			version = $3
@@ -120,6 +126,59 @@ fetch_dashboard_version() {
 	*) return 1 ;;
 	esac
 	printf '%s\n' "$version"
+}
+
+fetch_dashboard_version() {
+	fetch_feed_version "$DASHBOARD_VERSION_URL"
+}
+
+fetch_yacd_version() {
+	fetch_feed_version "$YACD_VERSION_URL"
+}
+
+install_dashboard_archive() {
+	local label="$1" source_url="$2" version="$3" target_dir="$4"
+	local ready=1 source_dir="" index stage_dir="${target_dir}.new.$$"
+
+	if ! download "$(versioned_url "$source_url" "$version")" "$TMP_DIR/$label.zip"; then
+		log "[$label] Update failed while downloading the dashboard."
+		return 1
+	elif ! mkdir -p "$TMP_DIR/$label" || \
+	   ! unzip -q "$TMP_DIR/$label.zip" -d "$TMP_DIR/$label"; then
+		log "[$label] Update failed while extracting the dashboard."
+		return 1
+	fi
+	for index in "$TMP_DIR/$label/index.html" "$TMP_DIR"/$label/*/index.html; do
+		if [ -f "$index" ]; then
+			source_dir="${index%/index.html}"
+			break
+		fi
+	done
+	if [ ! -f "$source_dir/index.html" ]; then
+		log "[$label] Update failed: invalid dashboard archive."
+		return 1
+	fi
+	rm -rf "$stage_dir"
+	if ! mkdir -p "$stage_dir" || ! cp -a "$source_dir/." "$stage_dir/"; then
+		log "[$label] Update failed while staging the dashboard."
+		ready=0
+	elif ! printf '%s\n' "$version" > "$stage_dir/dashboard.ver"; then
+		log "[$label] Update failed while writing its version."
+		ready=0
+	else
+		chmod -R a+rX "$stage_dir"
+	fi
+	if [ "$ready" -ne 1 ]; then
+		rm -rf "$stage_dir"
+		return 1
+	fi
+	rm -rf "$target_dir"
+	if mv "$stage_dir" "$target_dir"; then
+		log "[$label] Successfully updated."
+		return 0
+	fi
+	log "[$label] Update failed: unable to replace dashboard files."
+	return 1
 }
 
 versioned_url() {
@@ -162,14 +221,17 @@ if ! flock -n 9 > "/dev/null" 2>&1; then
 	exit 2
 fi
 rm -f "$RESULT_PATH"
-if [ -e "$DASHBOARD_DIR/.etag" ]; then
-	rm -f "$DASHBOARD_DIR/.etag"
+if [ -e "$SINGBOX_DASHBOARD_DIR/.etag" ] || [ -e "$YACD_DASHBOARD_DIR/.etag" ] || \
+   { [ -e "$DASHBOARD_DIR" ] && [ ! -L "$DASHBOARD_DIR" ] && [ -e "$DASHBOARD_DIR/.etag" ]; }; then
+	rm -f "$SINGBOX_DASHBOARD_DIR/.etag" "$YACD_DASHBOARD_DIR/.etag"
+	[ -L "$DASHBOARD_DIR" ] || rm -f "$DASHBOARD_DIR/.etag"
 	DASHBOARD_UPDATED=1
 fi
 
 GEOIP_CURRENT=1
 GEOSITE_CURRENT=1
 DASHBOARD_CURRENT=1
+YACD_CURRENT=1
 
 if NEW_GEOIP_VER="$(fetch_release_version "$GEOIP_VERSION_URL")"; then
 	OLD_VER="$(cat "$RESOURCES_DIR/geoip_cn.ver" 2>/dev/null || echo "NOT FOUND")"
@@ -204,8 +266,8 @@ else
 fi
 
 if NEW_DASHBOARD_VER="$(fetch_dashboard_version)"; then
-	OLD_VER="$(cat "$DASHBOARD_DIR/dashboard.ver" 2>/dev/null || echo "NOT FOUND")"
-	if [ -s "$DASHBOARD_DIR/index.html" ] && [ "$OLD_VER" = "$NEW_DASHBOARD_VER" ]; then
+	OLD_VER="$(cat "$SINGBOX_DASHBOARD_DIR/dashboard.ver" 2>/dev/null || echo "NOT FOUND")"
+	if [ -s "$SINGBOX_DASHBOARD_DIR/index.html" ] && [ "$OLD_VER" = "$NEW_DASHBOARD_VER" ]; then
 		log "[dashboard] Current version: $NEW_DASHBOARD_VER."
 	else
 		DASHBOARD_CURRENT=0
@@ -217,8 +279,22 @@ else
 	log "[dashboard] Failed to get the latest version; continuing with other resources."
 fi
 
+if NEW_YACD_VER="$(fetch_yacd_version)"; then
+	OLD_VER="$(cat "$YACD_DASHBOARD_DIR/dashboard.ver" 2>/dev/null || echo "NOT FOUND")"
+	if [ -s "$YACD_DASHBOARD_DIR/index.html" ] && [ "$OLD_VER" = "$NEW_YACD_VER" ]; then
+		log "[yacd] Current version: $NEW_YACD_VER."
+	else
+		YACD_CURRENT=0
+		log "[yacd] Local version: $OLD_VER, latest version: $NEW_YACD_VER."
+	fi
+else
+	YACD_CURRENT=-1
+	mark_failed "yacd"
+	log "[yacd] Failed to get the latest version; continuing with other resources."
+fi
+
 if [ "$GEOIP_CURRENT" -eq 1 ] && [ "$GEOSITE_CURRENT" -eq 1 ] && \
-	[ "$DASHBOARD_CURRENT" -eq 1 ]; then
+	[ "$DASHBOARD_CURRENT" -eq 1 ] && [ "$YACD_CURRENT" -eq 1 ]; then
 	log "[RESOURCES] You're already at the latest version."
 	finish 3
 fi
@@ -227,9 +303,9 @@ TMP_DIR="$(mktemp -d "$RUN_DIR/resources-update.XXXXXX")" || {
 	log "[RESOURCES] Failed to prepare the temporary update directory."
 	finish 1
 }
-DASHBOARD_STAGE="${DASHBOARD_DIR}.new.$$"
 cleanup() {
-	rm -rf "$TMP_DIR" "$DASHBOARD_STAGE" "$RESOURCES_DIR/.update.$$.tmp"
+	rm -rf "$TMP_DIR" "${SINGBOX_DASHBOARD_DIR}.new.$$" "${YACD_DASHBOARD_DIR}.new.$$" \
+		"$RESOURCES_DIR/.update.$$.tmp"
 }
 trap cleanup EXIT INT TERM
 
@@ -268,55 +344,29 @@ if [ "$GEOSITE_CURRENT" -eq 0 ]; then
 fi
 
 if [ "$DASHBOARD_CURRENT" -eq 0 ]; then
-	DASHBOARD_READY=1
-	if ! download "$(versioned_url "$DASHBOARD_SOURCE" "$NEW_DASHBOARD_VER")" "$TMP_DIR/dashboard.zip"; then
-		log "[dashboard] Update failed while downloading the dashboard."
-		DASHBOARD_READY=0
-	elif ! mkdir -p "$TMP_DIR/dashboard" || \
-	   ! unzip -q "$TMP_DIR/dashboard.zip" -d "$TMP_DIR/dashboard"; then
-		log "[dashboard] Update failed while extracting the dashboard."
-		DASHBOARD_READY=0
-	fi
-	DASHBOARD_SOURCE_DIR=""
-	if [ "$DASHBOARD_READY" -eq 1 ]; then
-		for DASHBOARD_INDEX in "$TMP_DIR/dashboard/index.html" "$TMP_DIR"/dashboard/*/index.html; do
-			if [ -f "$DASHBOARD_INDEX" ]; then
-				DASHBOARD_SOURCE_DIR="${DASHBOARD_INDEX%/index.html}"
-				break
-			fi
-		done
-		if [ ! -f "$DASHBOARD_SOURCE_DIR/index.html" ]; then
-			log "[dashboard] Update failed: invalid dashboard archive."
-			DASHBOARD_READY=0
-		fi
-	fi
-	if [ "$DASHBOARD_READY" -eq 1 ]; then
-		rm -rf "$DASHBOARD_STAGE"
-		if ! mkdir -p "$DASHBOARD_STAGE" || \
-	   ! cp -a "$DASHBOARD_SOURCE_DIR/." "$DASHBOARD_STAGE/"; then
-			log "[dashboard] Update failed while staging the dashboard."
-			DASHBOARD_READY=0
-		elif ! printf '%s\n' "$NEW_DASHBOARD_VER" > "$DASHBOARD_STAGE/dashboard.ver"; then
-			log "[dashboard] Update failed while writing its version."
-			DASHBOARD_READY=0
-		else
-			chmod -R a+rX "$DASHBOARD_STAGE"
-		fi
-	fi
-	if [ "$DASHBOARD_READY" -eq 1 ]; then
-		rm -rf "$DASHBOARD_DIR"
-		if mv "$DASHBOARD_STAGE" "$DASHBOARD_DIR"; then
-			log "[dashboard] Successfully updated."
-			DASHBOARD_UPDATED=1
-			mark_updated "dashboard"
-		else
-			log "[dashboard] Update failed: unable to replace dashboard files."
-			DASHBOARD_READY=0
-		fi
-	fi
-	if [ "$DASHBOARD_READY" -ne 1 ]; then
+	if install_dashboard_archive "dashboard" "$DASHBOARD_SOURCE" "$NEW_DASHBOARD_VER" "$SINGBOX_DASHBOARD_DIR"; then
+		DASHBOARD_UPDATED=1
+		mark_updated "dashboard"
+	else
 		mark_failed "dashboard"
 	fi
+fi
+
+if [ "$YACD_CURRENT" -eq 0 ]; then
+	if install_dashboard_archive "yacd" "$YACD_SOURCE" "$NEW_YACD_VER" "$YACD_DASHBOARD_DIR"; then
+		DASHBOARD_UPDATED=1
+		mark_updated "yacd"
+	else
+		mark_failed "yacd"
+	fi
+fi
+
+if [ -x "$DASHBOARD_SELECT" ]; then
+	"$DASHBOARD_SELECT" || \
+		log "[dashboard] Failed to point the active dashboard at the selected UI."
+elif [ ! -e "$DASHBOARD_DIR" ] && [ -s "$SINGBOX_DASHBOARD_DIR/index.html" ]; then
+	ln -s "$SINGBOX_DASHBOARD_DIR" "$DASHBOARD_DIR" || \
+		log "[dashboard] Failed to point the active dashboard at the official UI."
 fi
 
 if [ -n "$FAILED_BRANCHES" ]; then

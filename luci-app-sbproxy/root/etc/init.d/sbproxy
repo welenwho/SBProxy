@@ -17,6 +17,7 @@ LOG_PATH="$RUN_DIR/sbproxy.log"
 CACHE_DIR="$SB_DIR/cache"
 CACHE_PATH="$CACHE_DIR/cache.db"
 DASHBOARD_DIR="$SB_DIR/dashboard"
+DASHBOARD_SELECT="/usr/libexec/sbproxy-dashboard-select"
 CRON_FILE="/etc/crontabs/root"
 CRON_LOCK="/var/lock/root-crontab"
 CRON_TAG="#${CONF}_autosetup"
@@ -239,6 +240,7 @@ start_service() {
 	config_get_bool dashboard_enabled "config" "dashboard_enabled" "0"
 	[ "$routing_mode" != "disabled" ] || dashboard_enabled=0
 	if [ "$dashboard_enabled" = "1" ]; then
+		[ -x "$DASHBOARD_SELECT" ] && "$DASHBOARD_SELECT"
 		rm -f "$DASHBOARD_DIR/.etag"
 		if [ -s "$DASHBOARD_DIR/index.html" ]; then
 			dashboard_ready=1

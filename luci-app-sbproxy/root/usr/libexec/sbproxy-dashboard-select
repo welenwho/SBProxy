@@ -1,0 +1,54 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Point /etc/sbproxy/dashboard at the selected dashboard files.
+# sing-box serves one dashboard directory; both copies stay installed.
+
+NAME="sbproxy"
+SB_DIR="${SBPROXY_DIR:-/etc/$NAME}"
+ACTIVE_DIR="${DASHBOARD_DIR:-$SB_DIR/dashboard}"
+SINGBOX_DIR="$SB_DIR/dashboard-singbox"
+YACD_DIR="$SB_DIR/dashboard-yacd"
+CONFIG="${SBPROXY_CONFIG:-/etc/config/sbproxy}"
+
+kind="singbox"
+if [ -f "$CONFIG" ]; then
+	configured="$(sed -n "s/^[[:space:]]*option[[:space:]][[:space:]]*dashboard_ui[[:space:]][[:space:]]*['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$CONFIG" | head -n 1)"
+	case "$configured" in
+	singbox|yacd) kind="$configured" ;;
+	esac
+fi
+
+selected="$SINGBOX_DIR"
+if [ "$kind" = "yacd" ] && [ -s "$YACD_DIR/index.html" ]; then
+	selected="$YACD_DIR"
+elif [ ! -s "$SINGBOX_DIR/index.html" ] && [ -s "$YACD_DIR/index.html" ]; then
+	selected="$YACD_DIR"
+	kind="yacd"
+fi
+
+if [ ! -s "$selected/index.html" ]; then
+	exit 0
+fi
+
+# A previous install stored the official dashboard directly in the active path.
+if [ -e "$ACTIVE_DIR" ] && [ ! -L "$ACTIVE_DIR" ] && [ -s "$ACTIVE_DIR/index.html" ] &&
+   [ ! -s "$SINGBOX_DIR/index.html" ]; then
+	mkdir -p "$SINGBOX_DIR" || exit 1
+	find "$ACTIVE_DIR" -mindepth 1 -maxdepth 1 -exec mv {} "$SINGBOX_DIR/" \; || exit 1
+	rmdir "$ACTIVE_DIR" 2>/dev/null || rm -rf "$ACTIVE_DIR"
+	if [ "$kind" = "singbox" ]; then
+		selected="$SINGBOX_DIR"
+	fi
+fi
+
+if [ -L "$ACTIVE_DIR" ]; then
+	current="$(readlink "$ACTIVE_DIR" 2>/dev/null || true)"
+	if [ "$current" = "$selected" ]; then
+		exit 0
+	fi
+	rm -f "$ACTIVE_DIR" || exit 1
+elif [ -e "$ACTIVE_DIR" ]; then
+	rm -rf "$ACTIVE_DIR" || exit 1
+fi
+
+ln -s "$selected" "$ACTIVE_DIR"

@@ -80,7 +80,8 @@ class UpdateScriptTests(unittest.TestCase):
                     sys.stdout.write("https://github.com/example/releases/tag/" + tag)
                 raise SystemExit(0)
             if "gh-pages.atom" in url:
-                sys.stdout.write("<feed>\\n<updated>2026-03-03T03:03:03Z</updated>\\n</feed>\\n")
+                stamp = "2026-04-04T04:04:04Z" if "Yacd-meta" in url else "2026-03-03T03:03:03Z"
+                sys.stdout.write("<feed>\\n<updated>%s</updated>\\n</feed>\\n" % stamp)
                 raise SystemExit(0)
             mapping = json.loads(os.environ["FAKE_BODIES"])
             key = None
@@ -88,6 +89,8 @@ class UpdateScriptTests(unittest.TestCase):
                 key = "geosite"
             elif "geoip-cn.srs" in url:
                 key = "geoip"
+            elif "yacd.zip" in url:
+                key = "yacd"
             elif "dashboard.zip" in url or url.endswith(".zip"):
                 key = "dashboard"
             if key is None:
@@ -131,7 +134,11 @@ class UpdateScriptTests(unittest.TestCase):
             "GEOSITE_SOURCE": "https://example.test/geosite-cn.srs",
             "GEOSITE_VERSION_URL": "https://example.test/sing-geosite/releases/latest",
             "DASHBOARD_SOURCE": "https://example.test/dashboard.zip",
-            "DASHBOARD_VERSION_URL": "https://example.test/gh-pages.atom",
+            "DASHBOARD_VERSION_URL": "https://example.test/sing-box-dashboard/commits/gh-pages.atom",
+            "YACD_SOURCE": "https://example.test/yacd.zip",
+            "YACD_VERSION_URL": "https://example.test/Yacd-meta/commits/gh-pages.atom",
+            "SINGBOX_DASHBOARD_DIR": str(repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard"),
+            "YACD_DASHBOARD_DIR": str(repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd"),
         })
         return subprocess.run(["bash", str(UPDATE)], env=env, text=True, capture_output=True)
 
@@ -143,8 +150,10 @@ class UpdateScriptTests(unittest.TestCase):
             repo = base / "repo"
             resources = repo / "luci-app-sbproxy/root/etc/sbproxy/resources"
             dashboard = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard"
+            yacd = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd"
             resources.mkdir(parents=True)
             dashboard.mkdir(parents=True)
+            yacd.mkdir(parents=True)
             (repo / "luci-app-sbproxy/Makefile").write_text("PKG_RELEASE:=6\n")
 
             current_geosite = b"SRS-current-geosite"
@@ -158,10 +167,15 @@ class UpdateScriptTests(unittest.TestCase):
             (resources / "geoip_cn.ver").write_text("20260101010101\n")
             (dashboard / "index.html").write_text("<html>old</html>\n")
             (dashboard / "dashboard.ver").write_text("20260101010101\n")
+            (yacd / "index.html").write_text("<html>yacd</html>\n")
+            (yacd / "dashboard.ver").write_text("20260101010101\n")
 
             dash_zip = base / "dashboard.zip"
             with zipfile.ZipFile(dash_zip, "w") as archive:
                 archive.writestr("sing-box-dashboard/index.html", "<html>old</html>\n")
+            yacd_zip = base / "yacd.zip"
+            with zipfile.ZipFile(yacd_zip, "w") as archive:
+                archive.writestr("Yacd-meta-gh-pages/index.html", "<html>yacd-new</html>\n")
             noise_geoip_file = base / "geoip.srs"
             noise_geoip_file.write_bytes(noise_geoip)
             noise_geosite_file = base / "geosite.srs"
@@ -178,16 +192,20 @@ class UpdateScriptTests(unittest.TestCase):
                 "geosite": str(noise_geosite_file),
                 "geoip": str(noise_geoip_file),
                 "dashboard": str(dash_zip),
+                "yacd": str(yacd_zip),
             }
             first = self.run_update(repo, bin_dir, bodies, decompile)
             self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
             self.assertIn("geosite_cn unchanged", first.stdout)
             self.assertIn("geoip_cn unchanged", first.stdout)
-            self.assertIn("dashboard unchanged", first.stdout)
+            self.assertIn("SBProxy dashboard unchanged (upstream 20260303030303)", first.stdout)
+            self.assertIn("SBProxy yacd: 20260404040404", first.stdout)
             self.assertEqual((resources / "geosite_cn.srs").read_bytes(), current_geosite)
             self.assertEqual((resources / "geosite_cn.ver").read_text().strip(), "20260101010101")
             self.assertEqual((resources / "geoip_cn.ver").read_text().strip(), "20260101010101")
             self.assertEqual((dashboard / "dashboard.ver").read_text().strip(), "20260101010101")
+            self.assertEqual((yacd / "dashboard.ver").read_text().strip(), "20260404040404")
+            self.assertEqual((yacd / "index.html").read_text(), "<html>yacd-new</html>\n")
             self.assertEqual((repo / "luci-app-sbproxy/Makefile").read_text(), "PKG_RELEASE:=6\n")
 
             changed_file = base / "geosite-new.srs"
@@ -218,7 +236,9 @@ class BuildSelectionTests(unittest.TestCase):
                 case "$1" in
                     "$package/README"|"$package/README.md"|\
                     "$package"/root/etc/sbproxy/resources/*|\
-                    "$package"/root/etc/sbproxy/dashboard/*) printf 'data\n' ;;
+                    "$package"/root/etc/sbproxy/dashboard/*|\
+                    "$package"/root/etc/sbproxy/dashboard-singbox/*|\
+                    "$package"/root/etc/sbproxy/dashboard-yacd/*) printf 'data\n' ;;
                     *) printf 'build\n' ;;
                 esac
             }
@@ -231,6 +251,7 @@ class BuildSelectionTests(unittest.TestCase):
         source = RESOLVE.read_text()
         self.assertIn('"$package"/root/etc/sbproxy/resources/*', source)
         self.assertIn('"$package"/root/etc/sbproxy/dashboard/*', source)
+        self.assertIn('"$package"/root/etc/sbproxy/dashboard-yacd/*', source)
 
     def test_data_only_push_does_not_select_the_package(self):
         probe = subprocess.run(["bash", "-c", "mapfile -t x <<< a"], capture_output=True)
