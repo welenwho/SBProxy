@@ -24,22 +24,18 @@ LUCI_EXTRA_DEPENDS:=sing-box (>=1.14.0)
 
 PKG_NAME:=luci-app-sbproxy
 PKG_VERSION:=1.0.2
-PKG_RELEASE:=9
+PKG_RELEASE:=10
 PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 
 define Package/luci-app-sbproxy/conffiles
 /etc/config/sbproxy
-/etc/sbproxy/retired-adaptive/
-/etc/sbproxy/cache/
 /etc/sbproxy/certs/
-/etc/sbproxy/core/
-/etc/sbproxy/dashboard/
-/etc/sbproxy/dashboard-singbox/
-/etc/sbproxy/dashboard-yacd/
 /etc/sbproxy/ruleset/
 /etc/sbproxy/resources/direct_list.txt
 /etc/sbproxy/resources/proxy_list.txt
-/etc/sbproxy/tailscale/
+/etc/sbproxy/tailscale/tailscaled.state
+/etc/sbproxy/tailscale/tailscaled.log.conf
+/etc/sbproxy/tailscale/magicdns_target
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk

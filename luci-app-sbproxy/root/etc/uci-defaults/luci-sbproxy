@@ -30,6 +30,20 @@ then
 	exit 1
 fi
 
+# Older packages marked caches, dashboards and downloaded APKs as configuration,
+# so sysupgrade copied them into every backup. Drop those preserved paths.
+if [ -f /etc/sysupgrade.conf ]; then
+	sed -i \
+		-e '\|^/etc/sbproxy/retired-adaptive/$|d' \
+		-e '\|^/etc/sbproxy/cache/$|d' \
+		-e '\|^/etc/sbproxy/core/$|d' \
+		-e '\|^/etc/sbproxy/dashboard/$|d' \
+		-e '\|^/etc/sbproxy/dashboard-singbox/$|d' \
+		-e '\|^/etc/sbproxy/dashboard-yacd/$|d' \
+		-e '\|^/etc/sbproxy/tailscale/$|d' \
+		/etc/sysupgrade.conf
+fi
+
 rm -rf /tmp/luci-*
 [ -x /usr/libexec/sbproxy-dashboard-select ] && /usr/libexec/sbproxy-dashboard-select
 rm -f /etc/sbproxy/dashboard/.etag /etc/sbproxy/dashboard-singbox/.etag /etc/sbproxy/dashboard-yacd/.etag
