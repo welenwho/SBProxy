@@ -4,6 +4,8 @@ LuCI 的“版本管理”页面分别管理 SBProxy 插件与 sing-box 核心�
 页面显示两者的当前版本、发布版本与升级进度；核心支持稳定版、Alpha 和手动回滚。
 插件支持升级和同版本重装，保留配置；已安装中文包时会一起升级到相同版本，不额外安装语言包。
 
+人工修复发布递增 `PKG_VERSION` 的小版本，并把 `PKG_RELEASE` 重置为 1，例如 `1.0.2-r11` 之后的修复发布为 `1.0.3-r1`。自动维护产生的插件包只递增 `PKG_RELEASE`。
+
 插件包来自当前架构的 `apk-packages-arm64` 或 `apk-packages-amd64` 发布。
 只接受固定包名、发布 URL、SHA-256、APK 名称/版本/架构均匹配的资产。
 安装计划只能包含 `luci-app-sbproxy` 和 `luci-i18n-sbproxy-zh-cn`；依赖不满足时停止，

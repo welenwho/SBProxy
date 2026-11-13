@@ -57,4 +57,18 @@ grep -Fq "\"path\": \"sbproxy/tailscale-${new_cache_key}\"" \
 grep -Fq "\"path\": \"sbproxy/core-${new_cache_key}\"" \
 	"$TEST_ROOT/luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json"
 
-echo 'SBProxy release test passed: semantic version stays stable while package release and LuCI cache keys advance'
+echo 'SBProxy release test passed: automatic maintenance advances only the package release'
+
+# A manual fix starts the next patch and resets the package revision.
+patch_version="$(printf '%s\n' "$version" | awk -F. '{ printf "%d.%d.%d\n", $1, $2, $3 + 1 }')"
+patch_cache_version="$(printf '%s\n' "$patch_version" | sed 's/[^A-Za-z0-9_-]/-/g')"
+patch_key="${patch_cache_version}-r1"
+REPO_ROOT="$TEST_ROOT" "$BUMP_SCRIPT" patch
+test "$(sed -n 's/^PKG_VERSION:=//p' "$TEST_ROOT/luci-app-sbproxy/Makefile")" = "$patch_version"
+test "$(sed -n 's/^PKG_RELEASE:=//p' "$TEST_ROOT/luci-app-sbproxy/Makefile")" = 1
+test "$(readlink "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client-${patch_key}.js")" = \
+	'client.js'
+grep -Fq "\"path\": \"sbproxy/client-${patch_key}\"" \
+	"$TEST_ROOT/luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json"
+
+echo 'SBProxy patch test passed: manual fixes advance the patch version and reset the revision'

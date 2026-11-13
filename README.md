@@ -25,12 +25,12 @@ LuCI 界面管理客户端、服务端、节点和核心；流量由 TUN 接管�
 
 | 软件包 | 版本 | 说明 | 源码来源 |
 | --- | --- | --- | --- |
-| `luci-app-sbproxy` | `1.0.2-r11` | SBProxy 的 LuCI 管理界面，负责代理、节点、Tailscale 与核心管理。 | [welenwho/packages](https://github.com/welenwho/packages) |
+| `luci-app-sbproxy` | `1.0.3-r1` | SBProxy 的 LuCI 管理界面，负责代理、节点、Tailscale 与核心管理。 | [welenwho/packages](https://github.com/welenwho/packages) |
 | `sing-box` | `1.14.4` | 带本项目 Tailscale 兼容补丁的 sing-box 核心，供固件打包和在线安装。 | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) |
 
 ## 自动维护
 
-CI 每天两次检查 sing-box 上游稳定版和 SBProxy 规则数据（北京时间 02:17 和 14:47）。核心发现新版本时构建并发布。规则数据只在反编译后的匹配集合变化时提交，不因此递增插件修订号，也不单独发布 APK；下一次插件发版会带上当时的内置数据。软件包目录通过 Makefile 自动发现；新增或删除软件包后，构建范围和发布资产清理会自动调整。
+CI 每天两次检查 sing-box 上游稳定版和 SBProxy 规则数据（北京时间 02:17 和 14:47）。核心发现新版本时构建并发布。规则数据只在反编译后的匹配集合变化时提交，不因此递增插件修订号，也不单独发布 APK；下一次插件发版会带上当时的内置数据。人工修复发布递增插件小版本，例如 `1.0.2` 到 `1.0.3`，并把修订号重置为 `r1`。自动维护产生的插件包只递增修订号 `r`，不改小版本。软件包目录通过 Makefile 自动发现；新增或删除软件包后，构建范围和发布资产清理会自动调整。
 
 独立 sing-box 核心按稳定版发布，最多保留 5 个版本。APK 发布按 ARM64 和 AMD64 分开维护；每个包名保留最近三个版本，并提供包含各软件包最新版的整合包。
 

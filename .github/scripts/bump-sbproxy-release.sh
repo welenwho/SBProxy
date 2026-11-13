@@ -44,8 +44,13 @@ replace_once() {
 
 version="$(make_value PKG_VERSION)"
 release="$(make_value PKG_RELEASE)"
+mode="${1:-release}"
 [[ -n "$version" ]] || {
 	echo 'PKG_VERSION is missing from luci-app-sbproxy/Makefile.' >&2
+	exit 1
+}
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+	printf 'PKG_VERSION must be numeric semantic version: %s\n' "$version" >&2
 	exit 1
 }
 [[ "$release" =~ ^[0-9]+$ ]] || {
@@ -53,10 +58,24 @@ release="$(make_value PKG_RELEASE)"
 	exit 1
 }
 
-new_release=$((10#$release + 1))
+case "$mode" in
+release)
+	new_version="$version"
+	new_release=$((10#$release + 1))
+	;;
+patch)
+	new_version="$(printf '%s\n' "$version" | awk -F. '{ printf "%d.%d.%d\n", $1, $2, $3 + 1 }')"
+	new_release=1
+	;;
+*)
+	printf 'Usage: %s [release|patch]\n' "$0" >&2
+	exit 1
+	;;
+esac
 cache_version="$(printf '%s\n' "$version" | sed 's/[^A-Za-z0-9_-]/-/g')"
+new_cache_version="$(printf '%s\n' "$new_version" | sed 's/[^A-Za-z0-9_-]/-/g')"
 old_cache_key="${cache_version}-r${release}"
-new_cache_key="${cache_version}-r${new_release}"
+new_cache_key="${new_cache_version}-r${new_release}"
 old_client="$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/client-${old_cache_key}.js"
 new_client="$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/client-${new_cache_key}.js"
 old_tailscale="$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/tailscale-${old_cache_key}.js"
@@ -92,11 +111,15 @@ new_core="$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/core-${new_cac
 replace_once "$MENU" "sbproxy/client-${old_cache_key}" "sbproxy/client-${new_cache_key}"
 replace_once "$MENU" "sbproxy/tailscale-${old_cache_key}" "sbproxy/tailscale-${new_cache_key}"
 replace_once "$MENU" "sbproxy/core-${old_cache_key}" "sbproxy/core-${new_cache_key}"
+if [[ "$new_version" != "$version" ]]; then
+	replace_once "$MAKEFILE" "PKG_VERSION:=$version" "PKG_VERSION:=$new_version"
+fi
 replace_once "$MAKEFILE" "PKG_RELEASE:=$release" "PKG_RELEASE:=$new_release"
 mv -- "$old_client" "$new_client"
 mv -- "$old_tailscale" "$new_tailscale"
 mv -- "$old_core" "$new_core"
 
+[[ "$(make_value PKG_VERSION)" == "$new_version" ]]
 [[ "$(make_value PKG_RELEASE)" == "$new_release" ]]
 [[ "$(readlink "$new_client")" == 'client.js' ]]
 [[ "$(readlink "$new_tailscale")" == 'tailscale.js' ]]
@@ -105,5 +128,5 @@ grep -Fq "\"path\": \"sbproxy/client-${new_cache_key}\"" "$MENU"
 grep -Fq "\"path\": \"sbproxy/tailscale-${new_cache_key}\"" "$MENU"
 grep -Fq "\"path\": \"sbproxy/core-${new_cache_key}\"" "$MENU"
 
-printf 'SBProxy package release: %s-r%s -> %s-r%s (LuCI cache key: %s)\n' \
-	"$version" "$release" "$version" "$new_release" "$new_cache_key"
+printf 'SBProxy package %s: %s-r%s -> %s-r%s (LuCI cache key: %s)\n' \
+	"$mode" "$version" "$release" "$new_version" "$new_release" "$new_cache_key"
