@@ -408,6 +408,39 @@ const RESOURCES = {
 		version: `${SB_DIR}/dashboard-metacubexd/dashboard.ver`
 	}
 };
+const RESOURCE_UPDATE_SERVICE = 'sbproxy-resource-update';
+const RESOURCE_UPDATE_WORKER = '/usr/libexec/sbproxy-resource-update';
+
+function resourceUpdateInstance(ubus) {
+	return ubus?.call('service', 'list', { name: RESOURCE_UPDATE_SERVICE })
+		?.[RESOURCE_UPDATE_SERVICE]?.instances?.worker;
+}
+
+function resourceUpdateStatus(instance) {
+	if (!instance)
+		return null;
+
+	const target = instance.command?.[1];
+	const id = instance.command?.[2];
+	if (instance.running)
+		return { target, running: true };
+
+	let result = {};
+	for (let line in split(readfile('/var/run/sbproxy-resource-update/result') || '', '\n')) {
+		const pair = match(line, /^([^=]+)=(.*)$/);
+		if (pair)
+			result[pair[1]] = pair[2];
+	}
+	if (!id || result.id !== id)
+		return { target, interrupted: true };
+	return {
+		target,
+		status: int(result.status),
+		apply_failed: result.apply_failed === '1',
+		failed: result.failed ? split(result.failed, ',') : []
+	};
+}
+
 const CONNECTION_SITES = {
 	baidu: 'https://www.baidu.com/',
 	bilibili: 'https://www.bilibili.com/',
@@ -1432,38 +1465,34 @@ const methods = {
 					source: resource.source
 				});
 			}
-			return { resources };
+			return { resources, operation: resourceUpdateStatus(resourceUpdateInstance(connect())) };
 		}
 	},
 	resources_update: {
-		call: function() {
-			const sbpuci = cursor();
-			sbpuci.load('sbproxy');
-			const mixed_port = int(sbpuci.get('sbproxy', 'infra', 'mixed_port')) || 5330;
-			const update_proxy = (sbpuci.get('sbproxy', 'subscription', 'update_via_proxy') === '1') ?
-				`SBPROXY_UPDATE_PROXY=${shellQuote(`http://127.0.0.1:${mixed_port}`)} ` : '';
-			const status = system(`${update_proxy}${SB_DIR}/scripts/update_resources.sh`);
-			let update_result = {};
-			if (status !== 2) {
-				for (let line in split(trim(readfile(`${RUN_DIR}/update_resources.result`) || ''), '\n')) {
-					const pair = match(line, /^([^=]+)=(.*)$/);
-					if (pair)
-						update_result[pair[1]] = pair[2];
-				}
-			}
-			const core_updated = update_result.core_updated === '1';
-			const dashboard_updated = update_result.dashboard_updated === '1';
-			let apply_failed = false;
-			if ((core_updated || dashboard_updated) && system('/etc/init.d/sbproxy running >/dev/null 2>&1') === 0)
-				apply_failed = system('/etc/init.d/sbproxy reload >/dev/null 2>&1') !== 0;
-			return {
-				status,
-				core_updated,
-				dashboard_updated,
-				apply_failed,
-				updated: update_result.updated || null,
-				failed: update_result.failed || null
+		args: { target: '' },
+		call: function(req) {
+			const target = req.args?.target ?? 'all';
+			if (target !== 'all' && !(target in keys(RESOURCES)))
+				return { accepted: false };
+
+			const ubus = connect();
+			if (!ubus)
+				return { accepted: false };
+			const instance = resourceUpdateInstance(ubus);
+			if (instance?.running)
+				return { accepted: false, operation: resourceUpdateStatus(instance) };
+
+			const id = trim(readfile('/proc/sys/kernel/random/uuid') || '');
+			if (!id)
+				return { accepted: false };
+			// procd owns the worker so downloads and reloads never block rpcd.
+			const service = {
+				name: RESOURCE_UPDATE_SERVICE,
+				instances: { worker: { command: [RESOURCE_UPDATE_WORKER, target, id] } }
 			};
+			ubus.call('service', 'add', service);
+			const accepted = !ubus.error();
+			return { accepted, operation: accepted ? { target, running: true } : null };
 		}
 	}
 };

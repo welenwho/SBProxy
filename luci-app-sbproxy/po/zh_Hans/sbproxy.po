@@ -5371,3 +5371,23 @@ msgstr "已有其他升级任务正在进行。"
 #: htdocs/luci-static/resources/view/sbproxy/core.js
 msgid "This firmware cannot start an isolated update worker."
 msgstr "当前固件无法启动独立的升级任务。"
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "All resources"
+msgstr "全部资源"
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "Could not start the resource update."
+msgstr "无法启动资源更新。"
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "Updating…"
+msgstr "正在更新…"
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "The update was interrupted."
+msgstr "更新已中断。"
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "Failed resources: %s"
+msgstr "更新失败的资源：%s"

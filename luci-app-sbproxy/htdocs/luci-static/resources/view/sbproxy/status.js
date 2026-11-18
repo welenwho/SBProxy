@@ -189,96 +189,147 @@ const resources = [
 	}
 ];
 
-function getResources(o) {
+function getResources() {
 	const callResStatus = rpc.declare({
 		object: 'luci.sbproxy',
 		method: 'resources_get',
 		expect: { '': {} }
 	});
-
 	const callResUpdate = rpc.declare({
 		object: 'luci.sbproxy',
 		method: 'resources_update',
+		params: ['target'],
 		expect: { '': {} }
 	});
 
-	return L.resolveDefault(callResStatus(), { resources: [] }).then((result) => {
-		const status = {};
-		(result.resources || []).forEach((resource) => {
-			status[resource.type] = resource;
-		});
-		const table = E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Name')),
-				E('th', { 'class': 'th' }, _('Version')),
-				E('th', { 'class': 'th' }, _('Source'))
-			])
-		]);
-		const rows = resources.map((resource) => {
-			const resourceStatus = status[resource.type] || {};
-			const available = resourceStatus.version;
-			const source = resourceStatus.source;
+	const status = E('p', { 'role': 'status' });
+	const table = E('table', { 'class': 'table' }, [
+		E('tr', { 'class': 'tr table-titles' }, [
+			E('th', { 'class': 'th' }, _('Name')),
+			E('th', { 'class': 'th' }, _('Version')),
+			E('th', { 'class': 'th' }, _('Source')),
+			E('th', { 'class': 'th' }, _('Action'))
+		])
+	]);
+	const buttons = [];
+	const versions = {};
+	let operation = null;
+	let submitting = false;
+	let generation = 0;
+	let submissionFailed = false;
 
+	function nameFor(target) {
+		return resources.find((resource) => resource.type === target)?.name || _('All resources');
+	}
+
+	function showStatus() {
+		buttons.forEach((button) => { button.disabled = submitting || !!operation?.running; });
+		let message = '';
+		if (submissionFailed) {
+			message = _('Could not start the resource update.');
+		} else if (operation) {
+			if (operation.running)
+				message = _('Updating…');
+			else if (operation.interrupted)
+				message = _('The update was interrupted.');
+			else if (operation.apply_failed)
+				message = _('Resources were updated, but SBProxy failed to reload. Check the log for details.');
+			else
+				message = [
+					_('Successfully updated.'),
+					_('Update failed.'),
+					_('Update already in progress.'),
+					_('Already at the latest version.'),
+					_('Some resources failed to update. Check the log for details.')
+				][operation.status] || _('Unknown error.');
+			message = '%s — %s'.format(nameFor(operation.target), message);
+			if (operation.target === 'all' && operation.failed?.length)
+				message += ' ' + _('Failed resources: %s').format(operation.failed.map(nameFor).join(', '));
+		}
+		if (status.textContent !== message)
+			dom.content(status, message);
+	}
+
+	async function refresh() {
+		if (submitting)
+			return;
+		const currentGeneration = ++generation;
+		const result = await L.resolveDefault(callResStatus(), {});
+		if (currentGeneration === generation)
+			showResources(result);
+	}
+
+	function showResources(result) {
+		if (!result.resources)
+			return;
+		result.resources.forEach(({ type, version }) => {
+			const element = versions[type];
+			if (element) {
+				element.style.color = version ? 'green' : 'red';
+				dom.content(element, version || '-');
+			}
+		});
+		operation = result.operation;
+		if (operation?.running)
+			submissionFailed = false;
+		showStatus();
+	}
+
+	async function update(target) {
+		if (submitting || operation?.running)
+			return;
+		submitting = true;
+		submissionFailed = false;
+		generation++;
+		showStatus();
+		const result = await L.resolveDefault(callResUpdate(target), {});
+		submitting = false;
+		submissionFailed = !result.accepted && !result.operation?.running;
+		operation = result.operation;
+		showStatus();
+		return refresh();
+	}
+
+	function updateButton(target, label) {
+		const button = E('button', {
+			'type': 'button',
+			'class': 'btn cbi-button cbi-button-action',
+			'click': () => update(target)
+		}, [ label ]);
+		buttons.push(button);
+		return button;
+	}
+
+	return L.resolveDefault(callResStatus(), {}).then((result) => {
+		const sources = {};
+		(result.resources || []).forEach(({ type, source }) => { sources[type] = source; });
+		cbi_update_table(table, resources.map(({ type, name }) => {
+			const source = sources[type];
+			const version = E('span', {}, '-');
+			versions[type] = version;
 			return [
-				resource.name,
-				E('span', { 'style': available ? 'color:green' : 'color:red' },
-					available || '-'),
+				name,
+				version,
 				source ? E('a', {
 					'href': source,
 					'target': '_blank',
 					'rel': 'noreferrer noopener',
 					'style': 'word-break:break-all'
-				}, source) : '-'
+				}, source) : '-',
+				updateButton(type, _('Update'))
 			];
-		});
-		cbi_update_table(table, rows);
+		}));
+		const updateAll = updateButton('all', _('Update all'));
+		updateAll.style.marginLeft = '4px';
+		showResources(result);
+		poll.add(refresh);
 
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h3', { 'name': 'content', 'style': 'align-items:center;display:flex' }, [
 				_('Resource Management'),
-				E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'style': 'margin-left:4px',
-					'click': ui.createHandlerFn(this, () => {
-						return L.resolveDefault(callResUpdate(), {}).then((res) => {
-							let message, severity = 'info';
-
-							if (res.apply_failed) {
-								message = _('Resources were updated, but SBProxy failed to reload. Check the log for details.');
-								severity = 'error';
-							} else {
-								switch (res.status) {
-								case 0:
-									message = _('Successfully updated.');
-									break;
-								case 1:
-									message = _('Update failed.');
-									severity = 'error';
-									break;
-								case 2:
-									message = _('Update already in progress.');
-									break;
-								case 3:
-									message = _('Already at the latest version.');
-									break;
-								case 4:
-									message = _('Some resources failed to update. Check the log for details.');
-									severity = 'warning';
-									break;
-								default:
-									message = _('Unknown error.');
-									severity = 'error';
-									break;
-								}
-							}
-
-							ui.addNotification(null, E('p', message), severity);
-							return o.map.reset();
-						});
-					})
-				}, [ _('Update all') ])
+				updateAll
 			]),
-			E('div', { 'class': 'cbi-section' }, [ table ])
+			E('div', { 'class': 'cbi-section' }, [ status, table ])
 		]);
 	});
 }
@@ -406,7 +457,7 @@ return view.extend({
 		o.render = L.bind(getConnectionStatus, this);
 
 		o = s.option(form.DummyValue, '_resources');
-		o.render = L.bind(getResources, this, o);
+		o.render = L.bind(getResources, this);
 
 		s = m.section(form.NamedSection, 'config', 'sbproxy');
 		s.anonymous = true;

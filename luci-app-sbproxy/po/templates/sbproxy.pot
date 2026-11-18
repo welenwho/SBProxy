@@ -5240,3 +5240,23 @@ msgstr ""
 #: htdocs/luci-static/resources/view/sbproxy/core.js
 msgid "This firmware cannot start an isolated update worker."
 msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "All resources"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "Could not start the resource update."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "Updating…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "The update was interrupted."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/status.js
+msgid "Failed resources: %s"
+msgstr ""

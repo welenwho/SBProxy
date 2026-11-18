@@ -1,0 +1,35 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+
+# Keep the manual result separate from cron's result and from the runtime
+# directory that is owned by sing-box. Publish it only after any reload.
+STATE_DIR=/var/run/sbproxy-resource-update
+(umask 077; mkdir -p "$STATE_DIR") || exit 1
+result="$(mktemp "$STATE_DIR/.result.XXXXXX")" || exit 1
+trap 'rm -f "$result" "$result.done"' EXIT
+trap 'exit 1' INT TERM
+
+proxy=""
+if [ "$(uci -q get sbproxy.subscription.update_via_proxy)" = 1 ]; then
+	port="$(uci -q get sbproxy.infra.mixed_port)"
+	case "$port" in
+	''|*[!0-9]*) port=5330 ;;
+	esac
+	proxy="http://127.0.0.1:$port"
+fi
+
+SBPROXY_UPDATE_PROXY="$proxy" /etc/sbproxy/scripts/update_resources.sh "$1" "$result"
+status="$?"
+apply_failed=0
+if grep -Eq '^(core|dashboard)_updated=1$' "$result" 2>/dev/null &&
+   /etc/init.d/sbproxy running >/dev/null 2>&1 &&
+   ! /etc/init.d/sbproxy reload >/dev/null 2>&1; then
+	apply_failed=1
+	printf '%s [RESOURCES] Failed to reload SBProxy after updating resources.\n' \
+		"$(date '+%Y-%m-%d %H:%M:%S')" >> /var/run/sbproxy/sbproxy.log
+fi
+
+{
+	printf 'id=%s\nstatus=%s\napply_failed=%s\n' "$2" "$status" "$apply_failed"
+	[ ! -f "$result" ] || sed -n '/^failed=/p' "$result"
+} > "$result.done" && mv -f "$result.done" "$STATE_DIR/result"

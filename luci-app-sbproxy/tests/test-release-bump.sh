@@ -21,41 +21,23 @@ mkdir -p \
 cp -p "$PACKAGE_ROOT/Makefile" "$TEST_ROOT/luci-app-sbproxy/Makefile"
 cp -p "$PACKAGE_ROOT/root/usr/share/luci/menu.d/luci-app-sbproxy.json" \
 	"$TEST_ROOT/luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json"
-cp -p "$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/client.js" \
-	"$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client.js"
-cp -p "$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/tailscale.js" \
-	"$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js"
-cp -p "$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/core.js" \
-	"$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core.js"
-cp -P "$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/client-${old_cache_key}.js" \
-	"$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client-${old_cache_key}.js"
-cp -P "$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/tailscale-${old_cache_key}.js" \
-	"$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale-${old_cache_key}.js"
-cp -P "$PACKAGE_ROOT/htdocs/luci-static/resources/view/sbproxy/core-${old_cache_key}.js" \
-	"$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core-${old_cache_key}.js"
+views=htdocs/luci-static/resources/view/sbproxy
+for view in client tailscale core status; do
+	cp -p "$PACKAGE_ROOT/$views/$view.js" "$TEST_ROOT/luci-app-sbproxy/$views/"
+	cp -P "$PACKAGE_ROOT/$views/$view-${old_cache_key}.js" "$TEST_ROOT/luci-app-sbproxy/$views/"
+done
 
 REPO_ROOT="$TEST_ROOT" "$BUMP_SCRIPT"
 
 test "$(sed -n 's/^PKG_VERSION:=//p' "$TEST_ROOT/luci-app-sbproxy/Makefile")" = "$version"
 test "$(sed -n 's/^PKG_RELEASE:=//p' "$TEST_ROOT/luci-app-sbproxy/Makefile")" = "$new_release"
-test ! -e "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client-${old_cache_key}.js"
-test ! -L "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client-${old_cache_key}.js"
-test ! -e "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale-${old_cache_key}.js"
-test ! -L "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale-${old_cache_key}.js"
-test ! -e "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core-${old_cache_key}.js"
-test ! -L "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core-${old_cache_key}.js"
-test "$(readlink "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/client-${new_cache_key}.js")" = \
-	'client.js'
-test "$(readlink "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale-${new_cache_key}.js")" = \
-	'tailscale.js'
-test "$(readlink "$TEST_ROOT/luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/core-${new_cache_key}.js")" = \
-	'core.js'
-grep -Fq "\"path\": \"sbproxy/client-${new_cache_key}\"" \
-	"$TEST_ROOT/luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json"
-grep -Fq "\"path\": \"sbproxy/tailscale-${new_cache_key}\"" \
-	"$TEST_ROOT/luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json"
-grep -Fq "\"path\": \"sbproxy/core-${new_cache_key}\"" \
-	"$TEST_ROOT/luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json"
+for view in client tailscale core status; do
+	old_view="$TEST_ROOT/luci-app-sbproxy/$views/$view-${old_cache_key}.js"
+	test ! -e "$old_view" && test ! -L "$old_view"
+	test "$(readlink "$TEST_ROOT/luci-app-sbproxy/$views/$view-${new_cache_key}.js")" = "$view.js"
+	grep -Fq "\"path\": \"sbproxy/$view-${new_cache_key}\"" \
+		"$TEST_ROOT/luci-app-sbproxy/root/usr/share/luci/menu.d/luci-app-sbproxy.json"
+done
 
 echo 'SBProxy release test passed: automatic maintenance advances only the package release'
 

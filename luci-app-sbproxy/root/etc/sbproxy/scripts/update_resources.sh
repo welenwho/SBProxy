@@ -4,6 +4,12 @@
 # Copyright (C) 2022-2025 ImmortalWrt.org
 
 NAME="sbproxy"
+TARGET="${1:-all}"
+case "$TARGET" in
+all) TARGETS="geoip_cn geosite_cn dashboard yacd metacubexd" ;;
+geoip_cn|geosite_cn|dashboard|yacd|metacubexd) TARGETS="$TARGET" ;;
+*) printf '%s\n' "Invalid SBProxy resource: $TARGET" >&2; exit 1 ;;
+esac
 
 RESOURCES_DIR="${RESOURCES_DIR:-/etc/$NAME/resources}"
 DASHBOARD_DIR="${DASHBOARD_DIR:-/etc/$NAME/dashboard}"
@@ -12,7 +18,7 @@ YACD_DASHBOARD_DIR="${YACD_DASHBOARD_DIR:-/etc/$NAME/dashboard-yacd}"
 METACUBEXD_DASHBOARD_DIR="${METACUBEXD_DASHBOARD_DIR:-/etc/$NAME/dashboard-metacubexd}"
 RUN_DIR="${RUN_DIR:-/var/run/$NAME}"
 LOG_PATH="$RUN_DIR/$NAME.log"
-RESULT_PATH="$RUN_DIR/update_resources.result"
+RESULT_PATH="${2:-$RUN_DIR/update_resources.result}"
 GEOIP_SOURCE="${GEOIP_SOURCE:-https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set/geoip-cn.srs}"
 GEOIP_VERSION_URL="${GEOIP_VERSION_URL:-https://github.com/SagerNet/sing-geoip/releases/latest}"
 GEOSITE_SOURCE="${GEOSITE_SOURCE:-https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set-unstable/geosite-cn.srs}"
@@ -28,7 +34,7 @@ UPDATE_PROXY="${SBPROXY_UPDATE_PROXY:-}"
 SING_BOX="${SING_BOX:-/usr/bin/sing-box}"
 DASHBOARD_SELECT="${DASHBOARD_SELECT:-/usr/libexec/sbproxy-dashboard-select}"
 
-if ! mkdir -p "$RESOURCES_DIR" "$SINGBOX_DASHBOARD_DIR" "$YACD_DASHBOARD_DIR" "$METACUBEXD_DASHBOARD_DIR" "$RUN_DIR"; then
+if ! mkdir -p "$RUN_DIR"; then
 	printf '%s\n' "Failed to prepare SBProxy resource directories." >&2
 	exit 1
 fi
@@ -131,18 +137,6 @@ fetch_feed_version() {
 	printf '%s\n' "$version"
 }
 
-fetch_dashboard_version() {
-	fetch_feed_version "$DASHBOARD_VERSION_URL"
-}
-
-fetch_yacd_version() {
-	fetch_feed_version "$YACD_VERSION_URL"
-}
-
-fetch_metacubexd_version() {
-	fetch_feed_version "$METACUBEXD_VERSION_URL"
-}
-
 install_dashboard_archive() {
 	local label="$1" source_url="$2" version="$3" target_dir="$4"
 	local ready=1 source_dir="" index stage_dir="${target_dir}.new.$$"
@@ -222,185 +216,110 @@ install_rule_set() {
 	return 1
 }
 
+update_rule_set() {
+	local resource="$1" version_url="$2" source_url="$3"
+	local version old_version
+	if ! version="$(fetch_release_version "$version_url")"; then
+		log "[$resource] Failed to get the latest version."
+		return 1
+	fi
+	old_version="$(cat "$RESOURCES_DIR/$resource.ver" 2>/dev/null || echo "NOT FOUND")"
+	if [ "$old_version" = "$version" ] && [ -s "$RESOURCES_DIR/$resource.srs" ] &&
+	   validate_rule_set "$RESOURCES_DIR/$resource.srs"; then
+		log "[$resource] Current version: $version."
+		return 0
+	fi
+
+	log "[$resource] Local version: $old_version, latest version: $version."
+	if ! prepare_stage || ! download "$(versioned_url "$source_url" "$version")" "$TMP_DIR/$resource.srs"; then
+		log "[$resource] Update failed while downloading the rule set."
+		return 1
+	fi
+	if ! validate_rule_set "$TMP_DIR/$resource.srs"; then
+		log "[$resource] Update failed: invalid binary rule set."
+		return 1
+	fi
+	if ! install_rule_set "$TMP_DIR/$resource.srs" "$version" "$resource"; then
+		log "[$resource] Update failed while installing the rule set."
+		return 1
+	fi
+	log "[$resource] Successfully updated."
+	CORE_UPDATED=1
+	mark_updated "$resource"
+}
+
+update_dashboard() {
+	local resource="$1" version_url="$2" source_url="$3" target_dir="$4"
+	local version old_version
+	if [ -e "$target_dir/.etag" ] && rm -f "$target_dir/.etag"; then
+		DASHBOARD_UPDATED=1
+	fi
+	if ! version="$(fetch_feed_version "$version_url")"; then
+		log "[$resource] Failed to get the latest version."
+		return 1
+	fi
+	old_version="$(cat "$target_dir/dashboard.ver" 2>/dev/null || echo "NOT FOUND")"
+	if [ "$old_version" = "$version" ] && [ -s "$target_dir/index.html" ]; then
+		log "[$resource] Current version: $version."
+		return 0
+	fi
+
+	log "[$resource] Local version: $old_version, latest version: $version."
+	prepare_stage && install_dashboard_archive "$resource" "$source_url" "$version" "$target_dir" || return 1
+	DASHBOARD_UPDATED=1
+	mark_updated "$resource"
+}
+
+update_resource() {
+	case "$1" in
+	geoip_cn) update_rule_set "$1" "$GEOIP_VERSION_URL" "$GEOIP_SOURCE" ;;
+	geosite_cn) update_rule_set "$1" "$GEOSITE_VERSION_URL" "$GEOSITE_SOURCE" ;;
+	dashboard) update_dashboard "$1" "$DASHBOARD_VERSION_URL" "$DASHBOARD_SOURCE" "$SINGBOX_DASHBOARD_DIR" ;;
+	yacd) update_dashboard "$1" "$YACD_VERSION_URL" "$YACD_SOURCE" "$YACD_DASHBOARD_DIR" ;;
+	metacubexd) update_dashboard "$1" "$METACUBEXD_VERSION_URL" "$METACUBEXD_SOURCE" "$METACUBEXD_DASHBOARD_DIR" ;;
+	esac
+}
+
 exec 9>"$RUN_DIR/update_resources.lock"
-if ! flock -n 9 > "/dev/null" 2>&1; then
+if ! flock -n 9 > /dev/null 2>&1; then
 	log "[RESOURCES] A task is already running."
 	exit 2
 fi
 rm -f "$RESULT_PATH"
-if [ -e "$SINGBOX_DASHBOARD_DIR/.etag" ] || [ -e "$YACD_DASHBOARD_DIR/.etag" ] || \
-   [ -e "$METACUBEXD_DASHBOARD_DIR/.etag" ] || \
-   { [ -e "$DASHBOARD_DIR" ] && [ ! -L "$DASHBOARD_DIR" ] && [ -e "$DASHBOARD_DIR/.etag" ]; }; then
-	rm -f "$SINGBOX_DASHBOARD_DIR/.etag" "$YACD_DASHBOARD_DIR/.etag" "$METACUBEXD_DASHBOARD_DIR/.etag"
-	[ -L "$DASHBOARD_DIR" ] || rm -f "$DASHBOARD_DIR/.etag"
+
+TMP_DIR=""
+prepare_stage() {
+	[ -n "$TMP_DIR" ] && return 0
+	TMP_DIR="$(mktemp -d "$RUN_DIR/resources-update.XXXXXX")" || {
+		log "[RESOURCES] Failed to prepare the temporary update directory."
+		return 1
+	}
+}
+cleanup() {
+	[ -z "$TMP_DIR" ] || rm -rf "$TMP_DIR" "${SINGBOX_DASHBOARD_DIR}.new.$$" \
+		"${YACD_DASHBOARD_DIR}.new.$$" "${METACUBEXD_DASHBOARD_DIR}.new.$$" \
+		"$RESOURCES_DIR/.update.$$.tmp"
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+
+if [ "$TARGET" = all ] && [ ! -L "$DASHBOARD_DIR" ] && [ -e "$DASHBOARD_DIR/.etag" ] &&
+   rm -f "$DASHBOARD_DIR/.etag"; then
 	DASHBOARD_UPDATED=1
 fi
 
-GEOIP_CURRENT=1
-GEOSITE_CURRENT=1
-DASHBOARD_CURRENT=1
-YACD_CURRENT=1
-METACUBEXD_CURRENT=1
+for resource in $TARGETS; do
+	update_resource "$resource" || mark_failed "$resource"
+done
 
-if NEW_GEOIP_VER="$(fetch_release_version "$GEOIP_VERSION_URL")"; then
-	OLD_VER="$(cat "$RESOURCES_DIR/geoip_cn.ver" 2>/dev/null || echo "NOT FOUND")"
-	if [ -s "$RESOURCES_DIR/geoip_cn.srs" ] && \
-	   validate_rule_set "$RESOURCES_DIR/geoip_cn.srs" && \
-	   [ "$OLD_VER" = "$NEW_GEOIP_VER" ]; then
-		log "[geoip_cn] Current version: $NEW_GEOIP_VER."
-	else
-		GEOIP_CURRENT=0
-		log "[geoip_cn] Local version: $OLD_VER, latest version: $NEW_GEOIP_VER."
+if [ "$DASHBOARD_UPDATED" -eq 1 ]; then
+	if [ -x "$DASHBOARD_SELECT" ]; then
+		"$DASHBOARD_SELECT" || \
+			log "[dashboard] Failed to point the active dashboard at the selected UI."
+	elif [ ! -e "$DASHBOARD_DIR" ] && [ -s "$SINGBOX_DASHBOARD_DIR/index.html" ]; then
+		ln -s "$SINGBOX_DASHBOARD_DIR" "$DASHBOARD_DIR" || \
+			log "[dashboard] Failed to point the active dashboard at the official UI."
 	fi
-else
-	GEOIP_CURRENT=-1
-	mark_failed "geoip_cn"
-	log "[geoip_cn] Failed to get the latest version; continuing with other resources."
-fi
-
-if NEW_GEOSITE_VER="$(fetch_release_version "$GEOSITE_VERSION_URL")"; then
-	OLD_VER="$(cat "$RESOURCES_DIR/geosite_cn.ver" 2>/dev/null || echo "NOT FOUND")"
-	if [ -s "$RESOURCES_DIR/geosite_cn.srs" ] && \
-	   validate_rule_set "$RESOURCES_DIR/geosite_cn.srs" && \
-	   [ "$OLD_VER" = "$NEW_GEOSITE_VER" ]; then
-		log "[geosite_cn] Current version: $NEW_GEOSITE_VER."
-	else
-		GEOSITE_CURRENT=0
-		log "[geosite_cn] Local version: $OLD_VER, latest version: $NEW_GEOSITE_VER."
-	fi
-else
-	GEOSITE_CURRENT=-1
-	mark_failed "geosite_cn"
-	log "[geosite_cn] Failed to get the latest version; continuing with other resources."
-fi
-
-if NEW_DASHBOARD_VER="$(fetch_dashboard_version)"; then
-	OLD_VER="$(cat "$SINGBOX_DASHBOARD_DIR/dashboard.ver" 2>/dev/null || echo "NOT FOUND")"
-	if [ -s "$SINGBOX_DASHBOARD_DIR/index.html" ] && [ "$OLD_VER" = "$NEW_DASHBOARD_VER" ]; then
-		log "[dashboard] Current version: $NEW_DASHBOARD_VER."
-	else
-		DASHBOARD_CURRENT=0
-		log "[dashboard] Local version: $OLD_VER, latest version: $NEW_DASHBOARD_VER."
-	fi
-else
-	DASHBOARD_CURRENT=-1
-	mark_failed "dashboard"
-	log "[dashboard] Failed to get the latest version; continuing with other resources."
-fi
-
-if NEW_YACD_VER="$(fetch_yacd_version)"; then
-	OLD_VER="$(cat "$YACD_DASHBOARD_DIR/dashboard.ver" 2>/dev/null || echo "NOT FOUND")"
-	if [ -s "$YACD_DASHBOARD_DIR/index.html" ] && [ "$OLD_VER" = "$NEW_YACD_VER" ]; then
-		log "[yacd] Current version: $NEW_YACD_VER."
-	else
-		YACD_CURRENT=0
-		log "[yacd] Local version: $OLD_VER, latest version: $NEW_YACD_VER."
-	fi
-else
-	YACD_CURRENT=-1
-	mark_failed "yacd"
-	log "[yacd] Failed to get the latest version; continuing with other resources."
-fi
-
-if NEW_METACUBEXD_VER="$(fetch_metacubexd_version)"; then
-	OLD_VER="$(cat "$METACUBEXD_DASHBOARD_DIR/dashboard.ver" 2>/dev/null || echo "NOT FOUND")"
-	if [ -s "$METACUBEXD_DASHBOARD_DIR/index.html" ] && [ "$OLD_VER" = "$NEW_METACUBEXD_VER" ]; then
-		log "[metacubexd] Current version: $NEW_METACUBEXD_VER."
-	else
-		METACUBEXD_CURRENT=0
-		log "[metacubexd] Local version: $OLD_VER, latest version: $NEW_METACUBEXD_VER."
-	fi
-else
-	METACUBEXD_CURRENT=-1
-	mark_failed "metacubexd"
-	log "[metacubexd] Failed to get the latest version; continuing with other resources."
-fi
-
-if [ "$GEOIP_CURRENT" -eq 1 ] && [ "$GEOSITE_CURRENT" -eq 1 ] && \
-	[ "$DASHBOARD_CURRENT" -eq 1 ] && [ "$YACD_CURRENT" -eq 1 ] && \
-	[ "$METACUBEXD_CURRENT" -eq 1 ]; then
-	log "[RESOURCES] You're already at the latest version."
-	finish 3
-fi
-
-TMP_DIR="$(mktemp -d "$RUN_DIR/resources-update.XXXXXX")" || {
-	log "[RESOURCES] Failed to prepare the temporary update directory."
-	finish 1
-}
-cleanup() {
-	rm -rf "$TMP_DIR" "${SINGBOX_DASHBOARD_DIR}.new.$$" "${YACD_DASHBOARD_DIR}.new.$$" \
-		"${METACUBEXD_DASHBOARD_DIR}.new.$$" \
-		"$RESOURCES_DIR/.update.$$.tmp"
-}
-trap cleanup EXIT INT TERM
-
-if [ "$GEOIP_CURRENT" -eq 0 ]; then
-	if ! download "$(versioned_url "$GEOIP_SOURCE" "$NEW_GEOIP_VER")" "$TMP_DIR/geoip_cn.srs"; then
-		log "[geoip_cn] Update failed while downloading the IP rule set."
-		mark_failed "geoip_cn"
-	elif ! validate_rule_set "$TMP_DIR/geoip_cn.srs"; then
-		log "[geoip_cn] Update failed: invalid binary rule set."
-		mark_failed "geoip_cn"
-	elif ! install_rule_set "$TMP_DIR/geoip_cn.srs" "$NEW_GEOIP_VER" "geoip_cn"; then
-		log "[geoip_cn] Update failed while installing the IP rule set."
-		mark_failed "geoip_cn"
-	else
-		log "[geoip_cn] Successfully updated."
-		CORE_UPDATED=1
-		mark_updated "geoip_cn"
-	fi
-fi
-
-if [ "$GEOSITE_CURRENT" -eq 0 ]; then
-	if ! download "$(versioned_url "$GEOSITE_SOURCE" "$NEW_GEOSITE_VER")" "$TMP_DIR/geosite_cn.srs"; then
-		log "[geosite_cn] Update failed while downloading the domain rule set."
-		mark_failed "geosite_cn"
-	elif ! validate_rule_set "$TMP_DIR/geosite_cn.srs"; then
-		log "[geosite_cn] Update failed: invalid binary rule set."
-		mark_failed "geosite_cn"
-	elif ! install_rule_set "$TMP_DIR/geosite_cn.srs" "$NEW_GEOSITE_VER" "geosite_cn"; then
-		log "[geosite_cn] Update failed while installing the domain rule set."
-		mark_failed "geosite_cn"
-	else
-		log "[geosite_cn] Successfully updated."
-		CORE_UPDATED=1
-		mark_updated "geosite_cn"
-	fi
-fi
-
-if [ "$DASHBOARD_CURRENT" -eq 0 ]; then
-	if install_dashboard_archive "dashboard" "$DASHBOARD_SOURCE" "$NEW_DASHBOARD_VER" "$SINGBOX_DASHBOARD_DIR"; then
-		DASHBOARD_UPDATED=1
-		mark_updated "dashboard"
-	else
-		mark_failed "dashboard"
-	fi
-fi
-
-if [ "$YACD_CURRENT" -eq 0 ]; then
-	if install_dashboard_archive "yacd" "$YACD_SOURCE" "$NEW_YACD_VER" "$YACD_DASHBOARD_DIR"; then
-		DASHBOARD_UPDATED=1
-		mark_updated "yacd"
-	else
-		mark_failed "yacd"
-	fi
-fi
-
-if [ "$METACUBEXD_CURRENT" -eq 0 ]; then
-	if install_dashboard_archive "metacubexd" "$METACUBEXD_SOURCE" "$NEW_METACUBEXD_VER" "$METACUBEXD_DASHBOARD_DIR"; then
-		DASHBOARD_UPDATED=1
-		mark_updated "metacubexd"
-	else
-		mark_failed "metacubexd"
-	fi
-fi
-
-if [ -x "$DASHBOARD_SELECT" ]; then
-	"$DASHBOARD_SELECT" || \
-		log "[dashboard] Failed to point the active dashboard at the selected UI."
-elif [ ! -e "$DASHBOARD_DIR" ] && [ -s "$SINGBOX_DASHBOARD_DIR/index.html" ]; then
-	ln -s "$SINGBOX_DASHBOARD_DIR" "$DASHBOARD_DIR" || \
-		log "[dashboard] Failed to point the active dashboard at the official UI."
 fi
 
 if [ -n "$FAILED_BRANCHES" ]; then
@@ -410,6 +329,11 @@ if [ -n "$FAILED_BRANCHES" ]; then
 	fi
 	log "[RESOURCES] Update failed for: $FAILED_BRANCHES."
 	finish 1
+fi
+
+if [ -z "$UPDATED_BRANCHES" ]; then
+	log "[RESOURCES] You're already at the latest version."
+	finish 3
 fi
 
 finish 0
