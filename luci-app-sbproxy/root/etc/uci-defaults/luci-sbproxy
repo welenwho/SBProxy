@@ -45,6 +45,13 @@ if [ -f /etc/sysupgrade.conf ]; then
 		/etc/sysupgrade.conf
 fi
 
+# apk leaves a new copy beside a file it previously marked as configuration.
+# The generator is program code, so replace a stale copy before the service restarts.
+if [ -s /etc/sbproxy/scripts/generate_client.uc.apk-new ]; then
+	mv /etc/sbproxy/scripts/generate_client.uc.apk-new /etc/sbproxy/scripts/generate_client.uc
+	chmod 755 /etc/sbproxy/scripts/generate_client.uc
+fi
+
 rm -rf /tmp/luci-*
 [ -x /usr/libexec/sbproxy-dashboard-select ] && /usr/libexec/sbproxy-dashboard-select
 rm -f /etc/sbproxy/dashboard/.etag /etc/sbproxy/dashboard-singbox/.etag \

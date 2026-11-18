@@ -566,7 +566,17 @@ return view.extend({
 			const scheme = uci.get('sbproxy', 'config', 'dashboard_tls_tailscale') === '1' ? 'https://' : 'http://';
 			const ui = uci.get('sbproxy', 'config', 'dashboard_ui');
 			const path = (ui === 'yacd' || ui === 'metacubexd') ? '/ui/' : '/dashboard/';
-			window.open(scheme + host + ':' + port + path, '_blank', 'noopener,noreferrer');
+			let target = scheme + host + ':' + port + path;
+			if (ui === 'yacd') {
+				const secret = uci.get('sbproxy', 'config', 'dashboard_secret') || '';
+				const params = new URLSearchParams({
+					hostname: host,
+					port: String(port),
+					secret: secret
+				});
+				target += '?' + params.toString();
+			}
+			window.open(target, '_blank', 'noopener,noreferrer');
 		};
 
 		o = s.taboption('diversion', form.SectionValue, '_domain_groups', form.GridSection, 'domain_route', _('Diversion groups'),

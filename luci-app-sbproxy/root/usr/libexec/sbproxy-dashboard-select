@@ -75,3 +75,33 @@ if [ "$kind" = "yacd" ] || [ "$kind" = "metacubexd" ]; then
 	sed 's|data-base-url="http://127.0.0.1:9090"|data-base-url=""|' "$selected/index.html" > "$rewrite" && \
 		mv "$rewrite" "$selected/index.html"
 fi
+
+# MetaCubeXD has no query-string login. Seed the same localStorage records its
+# setup page writes, so the first visit uses this router's Clash API and secret.
+if [ "$kind" = "metacubexd" ]; then
+	secret="$(sed -n "s/^[[:space:]]*option[[:space:]][[:space:]]*dashboard_secret[[:space:]][[:space:]]*['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$CONFIG" | head -n 1)"
+	secret_json="$(printf '%s' "$secret" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+	cat > "$selected/config.js" <<EOF
+window.__METACUBEXD_CONFIG__ = {
+  defaultBackendURL: '',
+  githubToken: '',
+  sbproxySecret: "${secret_json}"
+};
+EOF
+	cat > "$selected/sbproxy-login.js" <<'EOF'
+(function () {
+  var secret = (window.__METACUBEXD_CONFIG__ && window.__METACUBEXD_CONFIG__.sbproxySecret) || '';
+  var url = window.location.origin;
+  var id = 'sbproxy';
+  try {
+    localStorage.setItem('endpointList', JSON.stringify([{id: id, url: url, secret: secret}]));
+    localStorage.setItem('selectedEndpoint', JSON.stringify(id));
+  } catch (e) {}
+})();
+EOF
+	if [ -f "$selected/index.html" ] && ! grep -q 'sbproxy-login.js' "$selected/index.html"; then
+		rewrite="${selected}/index.html.tmp.$$"
+		sed 's|<script src="config.js"|<script src="sbproxy-login.js"></script><script src="config.js"|' \
+			"$selected/index.html" > "$rewrite" && mv "$rewrite" "$selected/index.html"
+	fi
+fi

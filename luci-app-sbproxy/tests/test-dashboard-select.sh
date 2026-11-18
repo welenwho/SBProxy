@@ -9,8 +9,8 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/dashboard-singbox" "$TMP/dashboard-yacd" "$TMP/dashboard-metacubexd" "$TMP/etc"
 printf '<html>singbox</html>\n' > "$TMP/dashboard-singbox/index.html"
 printf '<html>yacd</html>\n<div id="app" data-base-url="http://127.0.0.1:9090"></div>\n' > "$TMP/dashboard-yacd/index.html"
-printf '<html>xd</html>\n<div id="app" data-base-url="http://127.0.0.1:9090"></div>\n' > "$TMP/dashboard-metacubexd/index.html"
-printf "config sbproxy 'config'\n\toption dashboard_ui 'singbox'\n" > "$TMP/etc/sbproxy"
+printf '<html>xd</html>\n<script src="config.js"></script>\n<div id="app" data-base-url="http://127.0.0.1:9090"></div>\n' > "$TMP/dashboard-metacubexd/index.html"
+printf "config sbproxy 'config'\n\toption dashboard_ui 'singbox'\n\toption dashboard_secret 'router-secret'\n" > "$TMP/etc/sbproxy"
 
 SBPROXY_DIR="$TMP" SBPROXY_CONFIG="$TMP/etc/sbproxy" "$SELECT"
 test "$(readlink "$TMP/dashboard")" = "$TMP/dashboard-singbox"
@@ -26,10 +26,13 @@ printf '<html>yacd</html>\n<div id="app" data-base-url="http://127.0.0.1:9090"><
 SBPROXY_DIR="$TMP" SBPROXY_CONFIG="$TMP/etc/sbproxy" "$SELECT"
 grep -Fq 'data-base-url=""' "$TMP/dashboard-yacd/index.html"
 
-printf "config sbproxy 'config'\n\toption dashboard_ui 'metacubexd'\n" > "$TMP/etc/sbproxy"
+printf "config sbproxy 'config'\n\toption dashboard_ui 'metacubexd'\n\toption dashboard_secret 'router-secret'\n" > "$TMP/etc/sbproxy"
 SBPROXY_DIR="$TMP" SBPROXY_CONFIG="$TMP/etc/sbproxy" "$SELECT"
 test "$(readlink "$TMP/dashboard")" = "$TMP/dashboard-metacubexd"
 grep -Fq 'data-base-url=""' "$TMP/dashboard/index.html"
+grep -Fq 'sbproxy-login.js' "$TMP/dashboard-metacubexd/index.html"
+grep -Fq 'sbproxySecret: "router-secret"' "$TMP/dashboard-metacubexd/config.js"
+grep -Fq 'selectedEndpoint' "$TMP/dashboard-metacubexd/sbproxy-login.js"
 
 printf "config sbproxy 'config'\n\toption dashboard_ui 'yacd'\n" > "$TMP/etc/sbproxy"
 rm "$TMP/dashboard"
