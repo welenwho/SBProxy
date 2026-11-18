@@ -97,11 +97,31 @@ normalize_dashboard_javascript() {
 	local file
 
 	while IFS= read -r -d '' file; do
-		# Preserve the JSON editor's two-space indent without trailing whitespace.
-		# shellcheck disable=SC2016
-		sed -i -E 's/^(`\+[^`]+\+`)  $/\1\\x20\\x20/' "$file" || return 1
+		# git diff --check rejects trailing blank. Upstream minifiers leave it
+		# in template strings (prettier YAML workers, Yacd CSS). The official
+		# dashboard JSON editor also emits a two-space indent as trailing
+		# spaces; encode only that indent so the editor still inserts spaces.
+		python3 - "$file" << 'PY' || return 1
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+indent = re.compile(br"^(`\+[^`]+\+`)[ \t]+$")
+lines = []
+for line in text.split(b"\n"):
+    match = indent.match(line)
+    if match:
+        spaces = line[match.end(1):]
+        line = match.group(1) + spaces.replace(b" ", b"\\x20").replace(b"\t", b"\\t")
+    else:
+        line = line.rstrip(b" \t")
+    lines.append(line)
+path.write_bytes(b"\n".join(lines))
+PY
 		if grep -nE '[[:blank:]]+$' "$file" >&2; then
-			echo "Unsupported trailing whitespace remains in dashboard JavaScript: $file" >&2
+			echo "Trailing whitespace remains in dashboard JavaScript: $file" >&2
 			return 1
 		fi
 	done < <(find "$dashboard_root" -type f -name '*.js' -print0)

@@ -240,6 +240,81 @@ class UpdateScriptTests(unittest.TestCase):
             self.assertEqual((resources / "geoip_cn.srs").read_bytes(), current_geoip)
             self.assertEqual((repo / "luci-app-sbproxy/Makefile").read_text(), "PKG_RELEASE:=6\n")
 
+    def test_dashboard_javascript_trailing_blank_is_normalized(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            bin_dir = base / "bin"
+            repo = base / "repo"
+            resources = repo / "luci-app-sbproxy/root/etc/sbproxy/resources"
+            dashboard = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard"
+            yacd = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd"
+            metacubexd = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-metacubexd"
+            bin_dir.mkdir()
+            for path in (resources, dashboard, yacd, metacubexd):
+                path.mkdir(parents=True)
+            (repo / "luci-app-sbproxy/Makefile").write_text("PKG_RELEASE:=6\n")
+            (resources / "geosite_cn.srs").write_bytes(b"SRS-current-geosite")
+            (resources / "geosite_cn.ver").write_text("20260101010101\n")
+            (resources / "geoip_cn.srs").write_bytes(b"SRS-current-geoip")
+            (resources / "geoip_cn.ver").write_text("20260101010101\n")
+            (dashboard / "index.html").write_text("<html>old</html>\n")
+            (dashboard / "dashboard.ver").write_text("20260101010101\n")
+            (yacd / "index.html").write_text("<html>yacd</html>\n")
+            (yacd / "dashboard.ver").write_text("20260101010101\n")
+            (metacubexd / "index.html").write_text("<html>xd</html>\n")
+            (metacubexd / "dashboard.ver").write_text("20260101010101\n")
+
+            dash_zip = base / "dashboard.zip"
+            with zipfile.ZipFile(dash_zip, "w") as archive:
+                archive.writestr("sing-box-dashboard/index.html", "<html>new</html>\n")
+                archive.writestr(
+                    "sing-box-dashboard/assets/editor.js",
+                    "keep\n`+h+`  \n`+u+`\t\nplain  \n",
+                )
+            yacd_zip = base / "yacd.zip"
+            with zipfile.ZipFile(yacd_zip, "w") as archive:
+                archive.writestr("Yacd-meta-gh-pages/index.html", "<html>yacd-new</html>\n")
+                archive.writestr(
+                    "Yacd-meta-gh-pages/assets/index.js",
+                    "css`\n  \n  .${rX} {\n  }\n",
+                )
+            xd_zip = base / "metacubexd.zip"
+            with zipfile.ZipFile(xd_zip, "w") as archive:
+                archive.writestr("metacubexd-gh-pages/index.html", "<html>xd-new</html>\n")
+                archive.writestr(
+                    "metacubexd-gh-pages/_nuxt/yaml.worker.js",
+                    "return`Unexpected doc '${t}', \n`)}}(` \nfor(;n>=0&&` \t\n",
+                )
+            self.write_tools(bin_dir, {})
+            decompile = {
+                "SRS-current-geosite": SAME_RULES,
+                "SRS-current-geoip": SAME_IP,
+            }
+            geosite_file = base / "geosite.srs"
+            geosite_file.write_bytes(b"SRS-current-geosite")
+            geoip_file = base / "geoip.srs"
+            geoip_file.write_bytes(b"SRS-current-geoip")
+            result = self.run_update(repo, bin_dir, {
+                "geosite": str(geosite_file),
+                "geoip": str(geoip_file),
+                "dashboard": str(dash_zip),
+                "yacd": str(yacd_zip),
+                "metacubexd": str(xd_zip),
+            }, decompile)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            editor = (dashboard / "assets/editor.js").read_bytes()
+            self.assertIn(b"`+h+`\\x20\\x20\n", editor)
+            self.assertIn(b"`+u+`\\t\n", editor)
+            self.assertNotRegex(editor.decode(), r"[ \t]+$")
+            yacd_js = (yacd / "assets/index.js").read_text()
+            self.assertIn("\n\n  .${rX} {\n", yacd_js)
+            self.assertNotRegex(yacd_js, r"[ \t]+$")
+            worker = (metacubexd / "_nuxt/yaml.worker.js").read_text()
+            self.assertIn("return`Unexpected doc '${t}',\n", worker)
+            self.assertIn("`)}}(`\n", worker)
+            self.assertIn("for(;n>=0&&`\n", worker)
+            self.assertNotRegex(worker, r"[ \t]+$")
+
     def test_workflow_does_not_bump_or_publish(self):
         workflow = WORKFLOW.read_text()
         queue = (ROOT / ".github/workflows/Daily-Maintenance-Queue.yml").read_text()
