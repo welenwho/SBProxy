@@ -337,7 +337,7 @@ return view.extend({
 		o.retain = true;
 
 		o = s.taboption('routing', form.Flag, 'main_urltest_smart_bandwidth', _('Measure download performance'),
-			_('Download up to 256 KiB per candidate for the best three candidates every 10 minutes. Uses about 108 MiB per day per group at most, excluding connection overhead.'));
+			_('Every 30 minutes, download up to 4 MiB through the active node and up to two other promising candidates, timing only the transfer after the first byte. Uses about 576 MiB per day per group at most, excluding connection overhead.'));
 		o.default = o.enabled;
 		o.rmempty = false;
 		proxyModeDepends(o, { main_node: 'urltest', main_urltest_smart: '1' }, ['bypass_mainland_china', 'global']);
@@ -872,7 +872,7 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(form.Flag, 'urltest_smart_bandwidth', _('Measure download performance'),
-			_('Download up to 256 KiB per candidate for the best three candidates every 10 minutes. Uses about 108 MiB per day per group at most, excluding connection overhead.'));
+			_('Every 30 minutes, download up to 4 MiB through the active node and up to two other promising candidates, timing only the transfer after the first byte. Uses about 576 MiB per day per group at most, excluding connection overhead.'));
 		so.default = so.enabled;
 		so.rmempty = false;
 		so.depends({node: 'urltest', urltest_smart: '1'});

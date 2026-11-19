@@ -1,6 +1,7 @@
 'use strict';
-import { observe, observeSession, score, eligibleNodes, decide } from 'smart_score';
+import { observe, observeSession, observeSpeed, recordSpeeds, speedCandidates, score, eligibleNodes, decide } from 'smart_score';
 function assert(ok, message) { if (!ok) die(message); }
+function close(value, expected) { return value > expected - 0.001 && value < expected + 0.001; }
 const now = 10000;
 const fast = observe(null, [80, 90, 100], now);
 const slow = observe(null, [400, 410, 420], now);
@@ -29,25 +30,65 @@ assert(!decide(state, {}, ['fast', 'slow'], 'slow', now), 'All unavailable retai
 assert(!decide(state, {fast}, ['fast'], 'slow', now), 'Unprobed current is not bootstrap');
 const measured = {...fast, speed: 10000, speed_checked: now};
 assert(score(measured, now) > score({...slow, speed: 10000000, speed_checked: now}, now), 'Throughput can outweigh latency');
+assert(close(score({...fast, speed: 1048576, speed_checked: now}, now) - score(fast, now), 1000), 'Penalty is milliseconds per MiB');
+assert(close(score({...fast, speed: 1, speed_checked: now}, now) - score(fast, now), 8000), 'Failed download penalty is capped');
 assert(score({...fast, speed: 1, speed_checked: now}, now) < 1000000000, 'Failed speed probe is not node failure');
-assert(score({...fast, speed: 1, speed_checked: now - 1201}, now) === score(fast, now), 'Bandwidth expires');
+assert(score({...fast, speed: 1, speed_checked: now - 3600}, now) === score(fast, now), 'Bandwidth expires');
+/* A distant node with high throughput must beat a near node with low throughput. */
+const near = {...observe(null, [60, 60, 60], now), speed: 2 * 1048576, speed_checked: now};
+const distant = {...observe(null, [250, 250, 250], now), speed: 20 * 1048576, speed_checked: now};
+assert(score(distant, now) < score(near, now) * 0.75, 'Fast distant node wins clearly');
+
+let speed_sample = observeSpeed(fast, 2 * 1048576, now);
+assert(speed_sample.speed === 2 * 1048576 && speed_sample.speed_checked === now && speed_sample.latency === fast.latency, 'First download is recorded');
+speed_sample = observeSpeed(speed_sample, 1048576, now + 1800);
+assert(speed_sample.speed > 1398101 && speed_sample.speed < 1398102, 'Downloads are averaged by time');
+assert(observeSpeed(speed_sample, 4 * 1048576, now + 1800 + 3600).speed === 4 * 1048576, 'Stale download is not averaged');
+assert(observeSpeed(speed_sample, 0, now + 1900).speed === 1, 'Failed download is recorded');
+let round = { fast: {...fast}, slow: {...slow} };
+assert(!recordSpeeds(round, { fast: 0, slow: 0 }, now) && round.fast.speed_checked == null, 'All failed downloads are ignored');
+assert(recordSpeeds(round, { fast: 0, slow: 1048576 }, now) && round.fast.speed === 1 && round.slow.speed === 1048576, 'Failure counts when a peer succeeds');
+
+const pool = {
+	active: {...observe(null, [100, 100, 100], now), speed: 1048576, speed_checked: now - 1800},
+	known: {...observe(null, [200, 200, 200], now - 600), speed: 10 * 1048576, speed_checked: now - 7200},
+	fresh: observe(null, [150, 150, 150], now - 300),
+	newer: observe(null, [120, 120, 120], now - 60),
+	hopeless: observe(null, [1500, 1500, 1500], now),
+	down: observe(null, [null, null, null], now),
+	stale: observe(null, [50, 50, 50], now - 1801)
+};
+const pool_nodes = keys(pool);
+let picked = speedCandidates(pool, pool_nodes, 'active', now, 3);
+assert(join(',', picked) === 'active,known,newer', 'Download round picks active, best known and lowest latency unmeasured: ' + join(',', picked));
+pool.newer = {...pool.newer, speed: 1048576, speed_checked: now};
+picked = speedCandidates(pool, pool_nodes, 'active', now, 3);
+assert(join(',', picked) === 'active,known,fresh', 'Least recently measured node is explored: ' + join(',', picked));
+assert(index(speedCandidates(pool, pool_nodes, 'active', now, 10), 'hopeless') < 0, 'Node that cannot win is not downloaded');
+assert(join(',', speedCandidates(pool, pool_nodes, 'fallback', now, 2)) === 'known,fresh', 'Bootstrap has no active node to measure');
+assert(!length(speedCandidates({ down: pool.down, stale: pool.stale }, ['down', 'stale'], 'down', now, 3)), 'Unhealthy and stale nodes are not downloaded');
+
 const nodes = ['fast', 'slow'];
 let bandwidth_samples = { fast, slow: {...slow, speed: 1, speed_checked: now} };
-assert(length(eligibleNodes(bandwidth_samples, nodes, 'slow', now)) === 2, 'Failed download must not exclude unmeasured candidates');
+assert(length(eligibleNodes(bandwidth_samples, nodes, now)) === 2, 'Failed download must not exclude unmeasured candidates');
 state = { fallback: 'fallback', switched: now - 200 };
 for (let i = 0; i < 2; i++)
-	assert(!decide(state, bandwidth_samples, eligibleNodes(bandwidth_samples, nodes, 'slow', now), 'slow', now), 'Download failure still requires confirmation');
-assert(decide(state, bandwidth_samples, eligibleNodes(bandwidth_samples, nodes, 'slow', now), 'slow', now) === 'fast', 'Escape node with a failed download');
+	assert(!decide(state, bandwidth_samples, eligibleNodes(bandwidth_samples, nodes, now), 'slow', now), 'Download failure still requires confirmation');
+assert(decide(state, bandwidth_samples, eligibleNodes(bandwidth_samples, nodes, now), 'slow', now) === 'fast', 'Escape node with a failed download');
 bandwidth_samples.slow = {...slow, speed: 1000000, speed_checked: now};
-assert(length(eligibleNodes(bandwidth_samples, nodes, 'slow', now)) === 1, 'Healthy measured current compares measured peers');
-assert(length(eligibleNodes(bandwidth_samples, nodes, 'fast', now)) === 2, 'Unmeasured current keeps unmeasured peers');
-assert(length(eligibleNodes(bandwidth_samples, nodes, 'slow', now + 1200)) === 2, 'Expired download does not restrict candidates');
+assert(join(',', eligibleNodes(bandwidth_samples, nodes, now)) === 'slow', 'Fresh successful downloads restrict candidates');
+state = { fallback: 'fallback', switched: now - 200 };
+for (let i = 0; i < 3; i++)
+	assert(!decide(state, bandwidth_samples, eligibleNodes(bandwidth_samples, nodes, now), 'fast', now + i * 60), 'Unmeasured current is not replaced by a slower measured node');
+const later = now + 3600;
+const expired = { fast: {...fast, checked: later}, slow: {...slow, checked: later, speed: 1000000, speed_checked: now} };
+assert(length(eligibleNodes(expired, nodes, later)) === 2, 'Expired download does not restrict candidates');
 bandwidth_samples.fast = {...fast, speed: 2000000, speed_checked: now};
-assert(length(eligibleNodes(bandwidth_samples, nodes, 'slow', now)) === 2, 'Fresh successful downloads compared together');
+assert(length(eligibleNodes(bandwidth_samples, nodes, now)) === 2, 'Fresh successful downloads compared together');
 bandwidth_samples.slow = {...bandwidth_samples.slow, healthy: false, failures: 2};
 delete bandwidth_samples.fast.speed;
 delete bandwidth_samples.fast.speed_checked;
-const recovery_nodes = eligibleNodes(bandwidth_samples, nodes, 'slow', now);
+const recovery_nodes = eligibleNodes(bandwidth_samples, nodes, now);
 state = { fallback: 'fallback', switched: now - 10 };
 assert(length(recovery_nodes) === 2 && decide(state, bandwidth_samples, recovery_nodes, 'slow', now) === 'fast', 'Outage recovery includes unmeasured healthy nodes');
 

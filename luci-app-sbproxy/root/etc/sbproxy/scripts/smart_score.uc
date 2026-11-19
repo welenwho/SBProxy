@@ -38,28 +38,93 @@ export function observeSession(previous, failed, now) {
 	};
 };
 
+const UNAVAILABLE = 1000000000;
+const SPEED_FRESH = 3600;
+
+function base(sample) {
+	return sample.latency + sample.jitter * 0.25 + sample.loss * 3000;
+}
+
+/* Expected milliseconds to download 1 MiB, capped so one bad download costs
+ * the same as a severe loss. A failed download is stored as speed 1. */
+function penalty(speed) {
+	return min(8000, 1048576000.0 / speed);
+}
+
+function downloaded(sample, now) {
+	return sample?.speed > 1 && sample.speed_checked != null &&
+		now - sample.speed_checked < SPEED_FRESH;
+}
+
 export function score(sample, now) {
-	if (!sample || !sample.healthy || now - sample.checked > 180) return 1000000000;
-	const bandwidth = sample.speed > 0 && now - sample.speed_checked < 1200 ?
-		(sample.speed < 8192 ? 8000 : 262144000 / sample.speed * 0.25) : 0;
-	return sample.latency + sample.jitter * 0.25 + sample.loss * 3000 + bandwidth;
+	if (!sample || !sample.healthy || now - sample.checked > 180) return UNAVAILABLE;
+	const bandwidth = sample.speed > 0 && sample.speed_checked != null &&
+		now - sample.speed_checked < SPEED_FRESH ? penalty(sample.speed) : 0;
+	return base(sample) + bandwidth;
 };
 
-export function eligibleNodes(samples, nodes, current, now) {
-	const downloaded = (sample) => sample?.speed > 1 &&
-		sample.speed_checked != null && now - sample.speed_checked < 1200;
-	/* Only compare download results when the active node has a successful,
-	 * fresh result too. A failed download must not pin an otherwise healthy
-	 * node, and recovery must consider every recently healthy candidate. */
-	if (score(samples[current], now) >= 1000000000 || !downloaded(samples[current]))
-		return nodes;
-	const measured = filter(nodes, (node) => downloaded(samples[node]) &&
-		score(samples[node], now) < 1000000000);
+/* Average with the previous fresh success so one noisy download does not
+ * decide alone. The harmonic mean averages download times, not rates. */
+export function observeSpeed(previous, value, now) {
+	const old = previous || {};
+	let speed = 1;
+	if (value > 0)
+		speed = downloaded(old, now) ? 2.0 / (1.0 / old.speed + 1.0 / value) : value;
+	return { ...old, speed, speed_checked: now };
+};
+
+/* A failure counts only when another node succeeded in the same round.
+ * When every download fails, the test endpoint is the likely problem. */
+export function recordSpeeds(samples, results, now) {
+	let succeeded = false;
+	for (let node, value in results)
+		if (value > 0) succeeded = true;
+	if (!succeeded) return false;
+	for (let node, value in results)
+		samples[node] = observeSpeed(samples[node], value, now);
+	return true;
+};
+
+/* Pick nodes for one download round: the active node, the best previously
+ * measured alternative, then the least recently measured healthy nodes.
+ * A node whose latency alone loses to the best known score is skipped,
+ * because no download result could make it win. */
+export function speedCandidates(samples, nodes, current, now, limit) {
+	const recent = filter(nodes, (node) => samples[node]?.healthy &&
+		now - samples[node].checked <= 1800);
+	const expected = (node) => base(samples[node]) + penalty(samples[node].speed);
+	const known = filter(recent, (node) => samples[node].speed > 1);
+	sort(known, (a, b) => expected(a) - expected(b));
+	const picked = [];
+	if (index(recent, current) >= 0) push(picked, current);
+	for (let node in known) {
+		if (node === current) continue;
+		push(picked, node);
+		break;
+	}
+	const ceiling = length(known) ? expected(known[0]) : UNAVAILABLE;
+	const rest = filter(recent, (node) => index(picked, node) < 0 &&
+		base(samples[node]) < ceiling);
+	sort(rest, (a, b) => ((samples[a].speed_checked || 0) - (samples[b].speed_checked || 0)) ||
+		base(samples[a]) - base(samples[b]));
+	for (let node in rest) {
+		if (length(picked) >= limit) break;
+		push(picked, node);
+	}
+	return slice(picked, 0, limit);
+};
+
+/* Once any healthy node has a fresh successful download, compare only such
+ * nodes. Unmeasured nodes carry no download penalty and would otherwise win
+ * by default; failed downloads are excluded instead of pinning a node. */
+export function eligibleNodes(samples, nodes, now) {
+	const measured = filter(nodes, (node) => downloaded(samples[node], now) &&
+		score(samples[node], now) < UNAVAILABLE);
 	return length(measured) ? measured : nodes;
 };
 
 export function decide(state, samples, nodes, current, now) {
-	let best = null, best_score = 1000000000;
+	let best = null, best_score = UNAVAILABLE;
 	for (let node in nodes) {
 		const value = score(samples[node], now);
 		if (value < best_score) { best = node; best_score = value; }

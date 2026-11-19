@@ -5221,8 +5221,8 @@ msgstr "每 60 秒综合检测多个 HTTPS 目标的可用性、延迟和波动�
 msgid "Measure download performance"
 msgstr "检测下载表现"
 
-msgid "Download up to 256 KiB per candidate for the best three candidates every 10 minutes. Uses about 108 MiB per day per group at most, excluding connection overhead."
-msgstr "每 10 分钟为排名靠前的最多三个候选节点各下载至多 256 KiB。每组每天最多约 108 MiB，不含连接开销。"
+msgid "Every 30 minutes, download up to 4 MiB through the active node and up to two other promising candidates, timing only the transfer after the first byte. Uses about 576 MiB per day per group at most, excluding connection overhead."
+msgstr "每 30 分钟通过当前节点和最多两个有潜力的候选节点各下载至多 4 MiB，只计算首字节之后的传输时间。每组每天最多约 576 MiB，不含连接开销。"
 
 msgid "URLTest interval"
 msgstr "URLTest 检测间隔"

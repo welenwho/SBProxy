@@ -5090,7 +5090,7 @@ msgstr ""
 msgid "Measure download performance"
 msgstr ""
 
-msgid "Download up to 256 KiB per candidate for the best three candidates every 10 minutes. Uses about 108 MiB per day per group at most, excluding connection overhead."
+msgid "Every 30 minutes, download up to 4 MiB through the active node and up to two other promising candidates, timing only the transfer after the first byte. Uses about 576 MiB per day per group at most, excluding connection overhead."
 msgstr ""
 
 msgid "URLTest interval"

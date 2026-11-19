@@ -1,9 +1,9 @@
 #!/usr/bin/ucode
 'use strict';
 
-import { readfile, writefile, popen } from 'fs';
+import { readfile, writefile, popen, open, stat } from 'fs';
 import { urlencode } from 'luci.http';
-import { observe, observeSession, score, eligibleNodes, decide } from 'smart_score';
+import { observe, observeSession, eligibleNodes, speedCandidates, recordSpeeds, decide } from 'smart_score';
 
 const plan_path = ARGV[0] || '/var/run/sbproxy/sing-box-c.json.smart.json';
 const plan = json(readfile(plan_path));
@@ -16,12 +16,12 @@ const targets = [
 ];
 const states = {};
 function quote(value) { return "'" + replace(value, /'/g, "'\\''") + "'"; }
-function run(command) {
+function run(command, allowed) {
 	const fd = popen(command + ' 2>/dev/null');
 	if (!fd) return null;
 	const output = fd.read('all');
 	const status = fd.close();
-	return status === 0 ? output : null;
+	return status === 0 || index(allowed || [], status) >= 0 ? output : null;
 }
 function api(path, data) {
 	const command = 'curl --noproxy ' + quote('*') + ' -fsS --connect-timeout 1 --max-time 4 ' +
@@ -33,7 +33,7 @@ function api(path, data) {
 	try { return json(result); } catch (e) { return null; }
 }
 function select(tag, node) { return api('/proxies/' + urlencode(tag), { name: node }); }
-const log_path = '/var/run/sbproxy/sing-box-c.log';
+const log_path = plan.log_path || '/var/run/sbproxy/sing-box-c.log';
 let log_offset = 0;
 let pending_node = null;
 const session_error = /context deadline exceeded|i\/o timeout|connection timed out|handshake timeout/;
@@ -41,7 +41,7 @@ function sessionFailures(nodes, probes) {
 	const failed = {};
 	const file = open(log_path, 'r');
 	if (!file) return failed;
-	const size = file.stat()?.size || 0;
+	const size = stat(log_path)?.size || 0;
 	if (log_offset > size) log_offset = 0;
 	file.seek(log_offset);
 	let line;
@@ -50,7 +50,7 @@ function sessionFailures(nodes, probes) {
 		if (outbound) pending_node = outbound[1];
 		/* Delay and bandwidth probes use the same outbounds. Count only user
 		 * sessions, which sing-box logs with an inbound. */
-		if (!pending_node || !session_error.test(line) || !match(line, /inbound\//))
+		if (!pending_node || !match(line, session_error) || !match(line, /inbound\//))
 			continue;
 		if (index(nodes, pending_node) >= 0 && index(probes, pending_node) < 0)
 			failed[pending_node] = true;
@@ -60,15 +60,30 @@ function sessionFailures(nodes, probes) {
 	file.close();
 	return failed;
 }
+function probe(state, node) {
+	const delays = [];
+	for (let url in targets) {
+		const result = api('/proxies/' + urlencode(node) + '/delay?timeout=2000&url=' + urlencode(url));
+		push(delays, result?.delay == null ? null : (result.delay > 0 ? result.delay : 1));
+	}
+	state.samples[node] = observe(state.samples[node], delays, time());
+}
+const speed_bytes = 4194304;
+const speed_interval = 1800;
+/* Time only the transfer after the first byte, so connection setup on a
+ * distant node is not mistaken for low throughput. A node that cannot finish
+ * within the time limit is measured from its partial download (curl 28). */
 function speed(node) {
 	if (!select(plan.probe_tag, node)) return null;
 	const result = run('curl --noproxy ' + quote('') + ' --proxy ' +
 		quote(sprintf('http://127.0.0.1:%d', plan.probe_port)) +
-		' -fsS --connect-timeout 2 --max-time 6 --max-filesize 262144 -o /dev/null -w ' +
-		quote('%{size_download} %{speed_download}') + ' ' + quote('https://speed.cloudflare.com/__down?bytes=262144'));
+		' -fsS --connect-timeout 3 --max-time 8 --max-filesize ' + speed_bytes + ' -o /dev/null -w ' +
+		quote('%{size_download} %{time_starttransfer} %{time_total}') + ' ' +
+		quote('https://speed.cloudflare.com/__down?bytes=' + speed_bytes), [ 28 ]);
 	if (!result) return null;
 	const parts = split(trim(result), ' ');
-	return +parts[0] >= 262144 && +parts[1] > 0 ? +parts[1] : null;
+	const size = +parts[0];
+	return size >= 65536 ? size / max(0.05, +parts[2] - +parts[1]) : null;
 }
 
 while (true) {
@@ -89,38 +104,30 @@ while (true) {
 			const node = group.nodes[state.cursor++ % length(group.nodes)];
 			if (index(batch, node) < 0) push(batch, node);
 		}
-		for (let node in batch) {
-			const delays = [];
-			for (let url in targets) {
-				const result = api('/proxies/' + urlencode(node) + '/delay?timeout=2000&url=' + urlencode(url));
-				push(delays, result?.delay == null ? null : (result.delay > 0 ? result.delay : 1));
-			}
-			state.samples[node] = observe(state.samples[node], delays, time());
-		}
+		for (let node in batch)
+			probe(state, node);
 		const sessions = sessionFailures(group.nodes, [plan.probe_tag, group.fallback]);
 		for (let node in group.nodes) {
 			if (!state.samples[node] && !sessions[node]) continue;
 			state.samples[node] = observeSession(state.samples[node], !!sessions[node], time());
 		}
 		const now = time();
-		if (group.bandwidth && now - state.bandwidth_at >= 600) {
-			const ranked = filter(group.nodes, (n) => score(state.samples[n], now) < 1000000000);
-			sort(ranked, (a, b) => score(state.samples[a], now) - score(state.samples[b], now));
-			/* Always compare the active node too; avoid comparing measured vs unmeasured candidates. */
-			const candidates = slice(ranked, 0, 3);
-			if (state.samples[current]?.healthy && index(candidates, current) < 0) {
-				if (length(candidates) >= 3) pop(candidates);
-				push(candidates, current);
+		if (group.bandwidth && now - state.bandwidth_at >= speed_interval) {
+			/* Candidates may come from earlier rotations. Refresh their latency
+			 * so a measured node can be compared in this cycle. */
+			const results = {};
+			for (let node in speedCandidates(state.samples, group.nodes, current, now, 3)) {
+				if (time() - state.samples[node].checked > 120) probe(state, node);
+				if (state.samples[node].healthy) results[node] = speed(node) || 0;
 			}
-			for (let node in candidates) {
-				const value = speed(node);
-				state.samples[node].speed = value || 1;
-				state.samples[node].speed_checked = time();
+			/* Without any healthy candidate, retry on the next cycle. */
+			if (length(results)) {
+				recordSpeeds(state.samples, results, time());
+				state.bandwidth_at = time();
 			}
-			state.bandwidth_at = time();
 		}
 		const decision_at = time();
-		const eligible = group.bandwidth ? eligibleNodes(state.samples, group.nodes, current, decision_at) : group.nodes;
+		const eligible = group.bandwidth ? eligibleNodes(state.samples, group.nodes, decision_at) : group.nodes;
 		const next = decide(state, state.samples, eligible, current, decision_at);
 		if (next && select(group.tag, next)) {
 			state.switched = time(); state.wins = 0; state.challenger = null;
