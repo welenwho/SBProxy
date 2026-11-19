@@ -565,17 +565,21 @@ return view.extend({
 				host = '[' + host + ']';
 			const scheme = uci.get('sbproxy', 'config', 'dashboard_tls_tailscale') === '1' ? 'https://' : 'http://';
 			const ui = uci.get('sbproxy', 'config', 'dashboard_ui');
-			const path = (ui === 'yacd' || ui === 'metacubexd') ? '/ui/' : '/dashboard/';
-			let target = scheme + host + ':' + port + path;
-			if (ui === 'yacd') {
-				const secret = uci.get('sbproxy', 'config', 'dashboard_secret') || '';
-				const params = new URLSearchParams({
-					hostname: host,
-					port: String(port),
-					secret: secret
-				});
-				target += '?' + params.toString();
-			}
+			const secret = uci.get('sbproxy', 'config', 'dashboard_secret') || '';
+			const params = new URLSearchParams({
+				hostname: host,
+				port: String(port),
+				secret: secret
+			});
+			let target = scheme + host + ':' + port;
+			// Each dashboard saves this login on first use. sbproxy-dashboard-select
+			// adds the reader for the sing-box dashboard's fragment.
+			if (ui === 'yacd')
+				target += '/ui/?' + params.toString();
+			else if (ui === 'metacubexd')
+				target += '/ui/#/setup?' + params.toString();
+			else
+				target += '/dashboard/#sbproxy-secret=' + encodeURIComponent(secret);
 			window.open(target, '_blank', 'noopener,noreferrer');
 		};
 

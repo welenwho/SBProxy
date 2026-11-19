@@ -40,6 +40,7 @@ jobs:
           set -e
           for test_file in luci-app-sbproxy/tests/test-*.py; do python3 "$test_file"; done
           sh luci-app-sbproxy/tests/test-core-job-shell.sh
+          sh luci-app-sbproxy/tests/test-dashboard-select.sh
       - name: Verified tool cache tests
         run: python3 sing-box/tests/test-rule-tool-cache.py
       - name: Static integration tests

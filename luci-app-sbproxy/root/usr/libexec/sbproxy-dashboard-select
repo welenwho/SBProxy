@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Point /etc/sbproxy/dashboard at the selected dashboard files.
 # sing-box serves one dashboard directory; every copy stays installed.
+# Each copy is also prepared to accept the login LuCI passes when opening it.
 
 NAME="sbproxy"
 SB_DIR="${SBPROXY_DIR:-/etc/$NAME}"
@@ -68,40 +69,128 @@ else
 	ln -s "$selected" "$ACTIVE_DIR" || exit 1
 fi
 
-# Clash dashboards otherwise try the browser machine at 127.0.0.1:9090.
-# Always rewrite after the link is correct; an unchanged link used to skip this.
-if [ "$kind" = "yacd" ] || [ "$kind" = "metacubexd" ]; then
-	rewrite="${selected}/index.html.tmp.$$"
-	sed 's|data-base-url="http://127.0.0.1:9090"|data-base-url=""|' "$selected/index.html" > "$rewrite" && \
-		mv "$rewrite" "$selected/index.html"
-fi
+# Replace a file only when its content changes, so a restart leaves the files
+# and the browsers' cached copies alone.
+replace_file() {
+	if cmp -s "$2" "$1"; then
+		rm -f "$2"
+	else
+		mv "$2" "$1"
+	fi
+}
 
-# MetaCubeXD has no query-string login. Seed the same localStorage records its
-# setup page writes, so the first visit uses this router's Clash API and secret.
-if [ "$kind" = "metacubexd" ]; then
-	secret="$(sed -n "s/^[[:space:]]*option[[:space:]][[:space:]]*dashboard_secret[[:space:]][[:space:]]*['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$CONFIG" | head -n 1)"
-	secret_json="$(printf '%s' "$secret" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-	cat > "$selected/config.js" <<EOF
-window.__METACUBEXD_CONFIG__ = {
-  defaultBackendURL: '',
-  githubToken: '',
-  sbproxySecret: "${secret_json}"
-};
-EOF
-	cat > "$selected/sbproxy-login.js" <<'EOF'
+edit_file() {
+	file="$1"
+	shift
+	sed "$@" "$file" > "$file.tmp.$$" || { rm -f "$file.tmp.$$"; return 1; }
+	replace_file "$file" "$file.tmp.$$"
+}
+
+write_file() {
+	cat > "$1.tmp.$$" || { rm -f "$1.tmp.$$"; return 1; }
+	replace_file "$1" "$1.tmp.$$"
+}
+
+# Each dashboard installs a service worker that answers page loads with its
+# precached index.html. Workbox revisions are the file's MD5, so give an edited
+# page its own revision; otherwise browsers keep showing the original page.
+refresh_precache() {
+	[ -f "$1/sw.js" ] || return 0
+	sum="$(md5sum "$1/index.html" | cut -d ' ' -f 1)"
+	[ "${#sum}" -eq 32 ] || return 1
+	edit_file "$1/sw.js" \
+		-e "s|\"revision\":\"[0-9a-f]*\",\"url\":\"index.html\"|\"revision\":\"$sum\",\"url\":\"index.html\"|" \
+		-e "s|url:\"index.html\",revision:\"[0-9a-f]*\"|url:\"index.html\",revision:\"$sum\"|" \
+		-e "s|url:\`./\`,revision:\`[0-9a-f]*\`|url:\`./\`,revision:\`$sum\`|"
+}
+
+# The sing-box dashboard has no URL login. LuCI opens it with the secret in the
+# fragment, which browsers never send to the server. Save it in the dashboard's
+# own server list, then drop it from the address bar.
+prepare_singbox() {
+	write_file "$1/sbproxy-login.js" <<'EOF' || return 1
 (function () {
-  var secret = (window.__METACUBEXD_CONFIG__ && window.__METACUBEXD_CONFIG__.sbproxySecret) || '';
-  var url = window.location.origin;
-  var id = 'sbproxy';
+  var match = /^#sbproxy-secret=(.*)$/.exec(window.location.hash);
+  if (!match) return;
+  history.replaceState(history.state, '', window.location.pathname + window.location.search);
+  var prefix = 'sing-box-dashboard.';
+  var normalize = function (url) {
+    return String(url || '').trim().replace(/\/+$/, '').replace(/^http:\/\//i, '');
+  };
+  var newId = function (kind) { return 'sbproxy-' + kind + '-' + Date.now().toString(36); };
+  var url = normalize(window.location.origin);
   try {
-    localStorage.setItem('endpointList', JSON.stringify([{id: id, url: url, secret: secret}]));
-    localStorage.setItem('selectedEndpoint', JSON.stringify(id));
+    var secret = decodeURIComponent(match[1]);
+    var state = JSON.parse(localStorage.getItem(prefix + 'servers') || 'null');
+    var servers = state && Array.isArray(state.servers) ? state.servers : [];
+    // The dashboard only migrates its old single-server record when no list exists.
+    var legacy = state ? null : JSON.parse(localStorage.getItem(prefix + 'server') || 'null');
+    if (legacy && legacy.url)
+      servers.push({ id: newId('legacy'), name: '', url: normalize(legacy.url), secret: legacy.secret || '' });
+    var server = null;
+    for (var i = 0; i < servers.length && !server; i++)
+      if (servers[i] && normalize(servers[i].url) === url) server = servers[i];
+    if (!server) {
+      server = { id: newId('router'), name: '', url: url, secret: '' };
+      servers.push(server);
+    }
+    if (typeof server.id !== 'string' || !server.id) server.id = newId('router');
+    server.secret = secret;
+    localStorage.setItem(prefix + 'servers', JSON.stringify({ servers: servers, activeId: server.id }));
+    localStorage.removeItem(prefix + 'server');
   } catch (e) {}
 })();
 EOF
-	if [ -f "$selected/index.html" ] && ! grep -q 'sbproxy-login.js' "$selected/index.html"; then
-		rewrite="${selected}/index.html.tmp.$$"
-		sed 's|<script src="config.js"|<script src="sbproxy-login.js"></script><script src="config.js"|' \
-			"$selected/index.html" > "$rewrite" && mv "$rewrite" "$selected/index.html"
+	if ! grep -q 'sbproxy-login.js' "$1/index.html"; then
+		edit_file "$1/index.html" -e 's|<script type="module"|<script src="sbproxy-login.js"></script>&|' || return 1
 	fi
+	refresh_precache "$1"
+}
+
+# Yacd logs in from ?hostname=&port=&secret= by editing a copy of its base URL.
+# 1.0.5 and 1.0.6 emptied that URL, which made Yacd throw and show a blank
+# page. Restore the upstream value and replace it with this page's origin
+# before Yacd starts.
+prepare_yacd() {
+	write_file "$1/sbproxy-login.js" <<'EOF' || return 1
+(function () {
+  var app = document.getElementById('app');
+  if (app) app.setAttribute('data-base-url', window.location.origin);
+})();
+EOF
+	edit_file "$1/index.html" -e 's|data-base-url=""|data-base-url="http://127.0.0.1:9090"|' || return 1
+	if ! grep -q 'sbproxy-login.js' "$1/index.html"; then
+		edit_file "$1/index.html" \
+			-e 's|<div id="app"[^>]*></div>|&<script src="sbproxy-login.js"></script>|' || return 1
+	fi
+	refresh_precache "$1"
+}
+
+# MetaCubeXD logs in from #/setup?hostname=&port=&secret= itself. 1.0.5 and
+# 1.0.6 wrote the secret into config.js, which is served without
+# authentication; keep only the same-origin default backend there.
+prepare_metacubexd() {
+	write_file "$1/config.js" <<'EOF' || return 1
+window.__METACUBEXD_CONFIG__ = {
+  defaultBackendURL: window.location.origin,
+  githubToken: '',
+}
+EOF
+	rm -f "$1/sbproxy-login.js"
+	edit_file "$1/index.html" -e 's|<script src="sbproxy-login.js"></script>||g' || return 1
+	refresh_precache "$1"
+}
+
+# Prepare every installed copy so switching dashboards needs no extra step and
+# no old copy keeps a secret.
+status=0
+if [ -s "$SINGBOX_DIR/index.html" ]; then
+	prepare_singbox "$SINGBOX_DIR" || status=1
 fi
+if [ -s "$YACD_DIR/index.html" ]; then
+	prepare_yacd "$YACD_DIR" || status=1
+fi
+if [ -s "$METACUBEXD_DIR/index.html" ]; then
+	prepare_metacubexd "$METACUBEXD_DIR" || status=1
+fi
+exit "$status"
