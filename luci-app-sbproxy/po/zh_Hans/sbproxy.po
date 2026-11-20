@@ -1438,8 +1438,8 @@ msgid ""
 "other promising candidates, timing only the transfer after the first byte. "
 "Uses about 576 MiB per day per group at most, excluding connection overhead."
 msgstr ""
-"每 30 分钟通过当前节点和最多两个有潜力的候选节点各下载至多 4 MiB，只计算首字节"
-"之后的传输时间。每组每天最多约 576 MiB，不含连接开销。"
+"每 30 分钟通过当前节点和最多两个有潜力的候选节点各下载至多 4 MiB，只计算首字"
+"节之后的传输时间。每组每天最多约 576 MiB，不含连接开销。"
 
 #: luci-app-sbproxy/htdocs/luci-static/resources/view/sbproxy/tailscale.js:367
 msgid "Exit Node"
