@@ -32,26 +32,29 @@ class CoreSwitchTests(unittest.TestCase):
                                      'test', name], capture_output=True, text=True)
             self.assertEqual(result.returncode == 0, valid, name)
 
-    def run_switch(self, target='1.14.0-r2', current='1.14.0-r3', failure=''):
+    def run_switch(self, target='1.14.0-r2', current='1.14.0-r3', failure='', action='rollback'):
         with tempfile.TemporaryDirectory() as tmp:
             prefix = MANAGER.read_text().split('action="${1:-status}"')[0]
             directory = shlex.quote(tmp)
             setup = f'''
 STATE_DIR={directory}
-ROLLBACK_APK="$STATE_DIR/rollback.apk"
-ROLLBACK_META="$STATE_DIR/rollback.meta"
 LOG_FILE="$STATE_DIR/test.log"
 work_dir="$STATE_DIR/work"
-mkdir -p "$work_dir"
+mkdir -p "$work_dir" "$STATE_DIR/plugin-recovery" "$STATE_DIR/plugin-packages"
+: > "$STATE_DIR/rollback.apk"
+: > "$STATE_DIR/rollback.meta"
 CURRENT_VERSION={shlex.quote(current)}
 TARGET_VERSION={shlex.quote(target)}
 FAILURE={shlex.quote(failure)}
-action=rollback
+action={shlex.quote(action)}
 fetch_assets() {{ assets_file="$work_dir/assets"; : > "$assets_file"; }}
-asset_by_name() {{ printf '%s\\t%s\\tsha256:abc\\t123\\t2026-09-08\\n' "$1" "$1"; }}
-find_recovery_asset() {{ [ "$FAILURE" != recovery_missing ] && asset_by_name "$1"; }}
+# Only the selected target is published; the installed core is not.
+asset_by_name() {{
+    [ "$1" = "sing-box-$TARGET_VERSION.apk" ] || return 1
+    printf '%s\\t%s\\tsha256:abc\\t10485760\\t2026-09-08\\n' "$1" "$1"
+}}
 package_version() {{ printf '%s\\n' "$CURRENT_VERSION"; }}
-ensure_persistent_storage() {{ [ "$FAILURE" != storage ]; }}
+ensure_persistent_storage() {{ echo "storage:$1"; [ "$FAILURE" != storage ]; }}
 curl_to_file() {{ echo "download:$1"; : > "$2"; }}
 verify_digest() {{ [ "$FAILURE" != checksum ]; }}
 validate_apk() {{ [ "$FAILURE" != config ]; }}
@@ -59,35 +62,38 @@ validate_binary() {{ return 0; }}
 service_running() {{ return 0; }}
 capture_expected_cores() {{ expected_instances=sing-box-c; return 0; }}
 install_apk() {{
-    echo "install:$TARGET_VERSION"
-    test -f "$ROLLBACK_APK" && test -f "$ROLLBACK_META" || exit 92
+    echo "install:$1"
+    ! ls "$STATE_DIR"/rollback.* "$STATE_DIR"/plugin-* >/dev/null 2>&1 || exit 92
     [ "$FAILURE" != install ] || return 1
     CURRENT_VERSION="$TARGET_VERSION"
 }}
 restart_if_needed() {{ echo restart; [ "$FAILURE" != restart ]; }}
-restore_rollback() {{ echo recovered; [ "$FAILURE" != recovery ]; }}
 '''
-            if failure == 'recovery':
-                setup += 'install_apk() { return 1; }\n'
             script = prefix + setup + '\nupgrade_core "sing-box-$TARGET_VERSION.apk"\n'
             return subprocess.run(['sh', '-c', script], text=True, capture_output=True)
 
-    def test_online_downgrade_without_local_backup(self):
+    def test_online_downgrade_without_installed_version_in_release(self):
         result = self.run_switch()
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn('rolled_back=1', result.stdout)
-        self.assertLess(result.stdout.index('download:sing-box-1.14.0-r3.apk'),
-                        result.stdout.index('install:1.14.0-r2'))
+        self.assertIn('previous_package_version=1.14.0-r3', result.stdout)
+        # Only the target is downloaded and installed; no rollback copy is made.
+        downloads = [line for line in result.stdout.splitlines() if line.startswith('download:')]
+        self.assertEqual(downloads, ['download:sing-box-1.14.0-r2.apk'])
+        self.assertEqual([line for line in result.stdout.splitlines() if line.startswith('install:')],
+                         [line for line in result.stdout.splitlines() if line.endswith('/candidate.apk')])
 
-    def test_reinstall_and_upgrade_use_same_transaction(self):
-        for target in ('1.14.0-r3', '1.14.0-r4'):
-            result = self.run_switch(target=target)
+    def test_upgrade_reinstall_and_alpha_use_same_transaction(self):
+        for target, current in (('1.14.0-r3', '1.14.0-r3'), ('1.14.0-r4', '1.14.0-r3'),
+                                ('1.15.0-alpha.13', '1.15.0_alpha12-r1')):
+            result = self.run_switch(target=target, current=current, action='upgrade')
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('upgraded=1', result.stdout)
+            self.assertIn('package_version=' + target, result.stdout)
 
-    def test_alpha_install_normalizes_apk_recovery_names(self):
-        result = self.run_switch(target='1.15.0-alpha.13', current='1.15.0_alpha12-r1')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('download:sing-box-1.15.0-alpha.12-r1.apk', result.stdout)
+    def test_storage_is_sized_for_the_target_only(self):
+        result = self.run_switch()
+        self.assertIn(f'storage:{10485760 * 4 + 16 * 1048576}', result.stdout)
 
     def test_version_matching_accepts_apk_alpha_but_keeps_revisions_strict(self):
         prefix = MANAGER.read_text().split('action="${1:-status}"')[0]
@@ -114,22 +120,13 @@ restore_rollback() {{ echo recovered; [ "$FAILURE" != recovery ]; }}
             self.assertIn('error_code=' + code, result.stdout)
             self.assertNotIn('install:', result.stdout)
 
-    def test_install_or_start_failure_restores_before_returning(self):
+    def test_install_or_start_failure_is_reported_without_rollback(self):
         for failure in ('install', 'restart'):
             result = self.run_switch(failure=failure)
-            self.assertIn('recovered', result.stdout)
-            self.assertIn('automatic_rollback=1', result.stdout)
-            self.assertIn('error_code=upgrade_failed_rolled_back', result.stdout)
-
-    def test_recovery_failure_is_reported(self):
-        result = self.run_switch(failure='recovery')
-        self.assertIn('automatic_rollback=0', result.stdout)
-        self.assertIn('error_code=upgrade_and_rollback_failed', result.stdout)
-
-    def test_missing_recovery_blocks_switch(self):
-        result = self.run_switch(failure='recovery_missing')
-        self.assertIn('error_code=rollback_source_unavailable', result.stdout)
-        self.assertNotIn('install:', result.stdout)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('error_code=upgrade_failed', result.stdout)
+            self.assertNotIn('automatic_rollback', result.stdout)
+            self.assertNotIn('rolled_back=1', result.stdout)
 
     def test_invalid_target_is_rejected_before_download(self):
         result = self.run_switch(target='../../untrusted')

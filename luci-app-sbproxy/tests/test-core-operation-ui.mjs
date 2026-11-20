@@ -47,9 +47,9 @@ function harness(sequence) {
   assert.equal(h.calls.length, 4);
   assert.ok(h.messages.some((m) => typeof m === 'string' && m.includes('Connection interrupted')));
 }
-// A real backend failure (including automatic recovery) is still shown.
+// A real backend failure is still shown.
 {
-  const failure = { ...running, operation_state: 'failed', result_code: 1, automatic_rollback: true, error_code: 'upgrade_failed_rolled_back' };
+  const failure = { ...running, operation_state: 'failed', result_code: 1, error_code: 'upgrade_failed' };
   const h = harness([failure]);
   await h.view.monitorOperation('Upgrade', id);
   assert.deepEqual(h.results[0], ['failure', 'Upgrade', failure]);

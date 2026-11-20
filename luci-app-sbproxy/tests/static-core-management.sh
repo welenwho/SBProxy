@@ -22,7 +22,11 @@ grep -Fq 'verify_digest "$candidate_apk"' "$MANAGER"
 grep -Fq 'validate_configs "$extract_dir/usr/bin/sing-box"' "$MANAGER"
 grep -Fq 'SBPROXY_CLIENT_CONFIG_PATH=' "$MANAGER"
 grep -Fq 'SBPROXY_SERVER_CONFIG_PATH=' "$MANAGER"
-grep -Fq 'restore_rollback "$was_running"' "$MANAGER"
+grep -Fq 'fail upgrade_failed' "$MANAGER"
+# Neither core nor plugin updates depend on the installed version still being
+# published, so no recovery or rollback package is prepared.
+! grep -Eq 'find_recovery_asset|prepare_plugin_recovery|restore_rollback|ROLLBACK_APK|rollback_source_unavailable' "$MANAGER"
+! grep -Fq 'legacy' "$PACKAGE_ROOT/root/usr/libexec/sbproxy-core-catalog.uc"
 grep -Fq 'running sing-box-c' "$MANAGER"
 grep -Fq 'running sing-box-s' "$MANAGER"
 grep -Fq 'capture_expected_cores' "$MANAGER"

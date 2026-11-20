@@ -49,10 +49,17 @@ assert.equal(checks.length, 2);
 assert.equal(installers.length, 2);
 assert.equal(nodes.filter(n => n.tag === 'table').length, 1, 'Only the resource table; no feature/architecture/storage tables');
 await checks[0].attrs.click();
-assert.equal(selectors[0].children.length, 1, 'Plugin downgrade is not offered');
+assert.deepEqual(selectors[0].children.map(option => option.attrs.value),
+  ['luci-app-sbproxy-1.0.1-r39.apk', 'luci-app-sbproxy-1.0.1-r38.apk'], 'Plugin downgrade is offered, newest first');
 assert.equal(installers[0].children, 'Reinstall');
 await installers[0].attrs.click();
 assert.equal(calls.at(-1)[0], 'plugin_upgrade');
+selectors[0].value = 'luci-app-sbproxy-1.0.1-r38.apk';
+selectors[0].onchange();
+assert.equal(installers[0].children, 'Roll back');
+await installers[0].attrs.click();
+assert.deepEqual(calls.at(-1).slice(0, 2), ['plugin_upgrade', 'luci-app-sbproxy-1.0.1-r38.apk'],
+  'A plugin downgrade uses the same verified install path');
 await checks[1].attrs.click();
 assert.equal(installers[1].children, 'Update', 'Keep an installed Alpha on the Alpha channel by default');
 selectors[1].value = 'sing-box-1.14.4.apk';
@@ -98,4 +105,4 @@ await polls[0]();
 assert(resourceButtons.every(n => !n.disabled));
 assert.equal(table.rows[1][1].children, '20261118141523');
 assert.equal(resourceStatus.children, 'All resources — Some resources failed to update. Check the log for details. Failed resources: China IP rules (IPv4 and IPv6), Yacd-meta');
-console.log('Version management UI: independent plugin/core actions, rollback, shared busy state, query errors and resource updates passed');
+console.log('Version management UI: independent plugin/core actions, plugin and core downgrade, shared busy state, query errors and resource updates passed');

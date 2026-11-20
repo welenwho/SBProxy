@@ -65,11 +65,10 @@ const operationStages = {
 	querying: _('Querying published packages...'),
 	downloading: _('Downloading packages...'),
 	validating: _('Verifying the package and current configuration...'),
-	preparing_recovery: _('Preparing the emergency recovery package...'),
 	installing: _('Installing packages...'),
 	restarting: _('Restarting SBProxy; network access may pause briefly...'),
 	checking_health: _('Checking service health...'),
-	restoring: _('Restoring the previous version...')
+	restoring_config: _('Restoring the configuration...')
 };
 
 // Never infer success from a version match: reinstall and failed health checks
@@ -89,12 +88,10 @@ function operationOutcome(result, id) {
 
 const coreErrors = {
 	worker_unavailable: _('This firmware cannot start an isolated update worker.'),
-	plugin_downgrade: _('Select the current or a newer SBProxy version.'),
 	plugin_dependencies: _('This plugin version needs other packages, such as a newer sing-box core, to be installed or upgraded first. Plugin updates never change the core.'),
-	plugin_upgrade_rolled_back: _('The plugin update failed; the previous version and configuration were restored.'),
-	plugin_recovery_failed: _('The plugin update and automatic recovery failed. Check the update log.'),
+	plugin_upgrade_failed: _('The plugin update failed; the configuration was restored, but the packages were not rolled back. Retry or install another version.'),
+	plugin_config_restore_failed: _('The plugin update failed, and restoring the configuration or restarting SBProxy also failed. Check the update log.'),
 	health_snapshot_failed: _('Unable to capture the expected core instances.'),
-	already_rolled_back: _('The rollback core is already installed.'),
 	candidate_rejected: _('The downloaded package failed metadata, feature, or configuration validation.'),
 	checksum_mismatch: _('The downloaded core package failed SHA-256 verification.'),
 	current_version_unknown: _('Unable to determine the installed core package version.'),
@@ -104,18 +101,10 @@ const coreErrors = {
 	not_an_upgrade: _('The selected package is not newer than the installed core.'),
 	operation_in_progress: _('Another update is already in progress.'),
 	release_query_failed: _('Unable to query the SBProxy package release.'),
-	rollback_checksum_mismatch: _('The rollback package failed SHA-256 verification.'),
-	rollback_download_failed: _('Unable to download the current core package for rollback.'),
-	rollback_failed: _('Core rollback failed. Check the core manager log immediately.'),
-	rollback_metadata_invalid: _('Rollback metadata is incomplete.'),
-	rollback_rejected: _('The rollback package failed metadata, feature, or configuration validation.'),
-	rollback_source_unavailable: _('The installed package is no longer available in the trusted release, so recovery cannot be prepared.'),
-	rollback_unavailable: _('No rollback package is available.'),
 	target_unavailable: _('The selected core package is no longer available.'),
 	temporary_directory_failed: _('Unable to create a temporary directory.'),
 	unsupported_architecture: _('Core updates are not available for this architecture.'),
-	upgrade_and_rollback_failed: _('The new core failed and automatic rollback also failed. Check the core manager log immediately.'),
-	upgrade_failed_rolled_back: _('The new core failed to install or start; the previous core was restored.')
+	upgrade_failed: _('The selected core failed to install or start. Check the core manager log, then install another version.')
 };
 
 function resultMessage(result) {
@@ -295,10 +284,6 @@ return view.extend({
 	showFailure(title, result) {
 		ui.showModal(title, [
 			E('p', { 'class': 'alert-message error' }, [ resultMessage(result) ]),
-			result?.automatic_rollback ?
-				E('p', { 'class': 'alert-message warning' }, [
-					_('The previous version was restored automatically.')
-				]) : '',
 			E('div', { 'class': 'right' }, [
 				E('button', {
 					'class': 'btn',
@@ -376,8 +361,9 @@ return view.extend({
 			const outcome = operationOutcome(result, id);
 			if (result.operation_id === id) this.displayOperation(result);
 			if (outcome === 'success')
-				return this.showSuccess(title, (result.component === 'plugin' ?
-					_('SBProxy was updated to %s successfully.') : result.rolled_back ?
+				return this.showSuccess(title, (result.component === 'plugin' ? (result.rolled_back ?
+					_('SBProxy was rolled back to %s successfully.') :
+					_('SBProxy was updated to %s successfully.')) : result.rolled_back ?
 					_('The sing-box core was rolled back to %s successfully.') :
 					_('The sing-box core was upgraded to %s successfully.')).format(result.package_version || '-'));
 			if (outcome === 'failure') return this.showFailure(title, result);
@@ -473,7 +459,7 @@ return view.extend({
 							dom.content(info, E('span', { 'style': 'color:red' }, [ resultMessage(result) ]));
 							return;
 						}
-						versions = plugin ? (result.assets || []).filter(a => a.relation !== 'older')
+						versions = plugin ? (result.assets || []).slice()
 							.sort((a, b) => b.package_version.localeCompare(a.package_version, undefined, { numeric: true })) :
 							sortCoreAssets(result.assets || []);
 						dom.content(selector, versions.length ? versions.map(asset => E('option', {

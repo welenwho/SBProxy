@@ -51,8 +51,7 @@ function coreManagerCall(action, target, operation_id) {
 		assets: []
 	};
 	const booleans = [
-		'automatic_rollback', 'busy', 'manager_supported', 'rollback_available',
-		'rolled_back', 'service_running', 'upgraded'
+		'busy', 'manager_supported', 'rolled_back', 'service_running', 'upgraded'
 	];
 	const integers = [ 'overlay_available_kb', 'tmp_available_kb', 'result_code' ];
 

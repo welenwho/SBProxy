@@ -75,8 +75,7 @@ upgrade_core() {
     while [ ! -f "$JOB_DIR/allow-finish" ]; do sleep 0.05; done
     progress installing
     if [ "$job_target" = sing-box-1.14.0-r9.apk ]; then
-        emit automatic_rollback 1
-        fail upgrade_failed_rolled_back 'Previous core restored.'
+        fail upgrade_failed 'The selected core failed to install or start.'
     fi
     progress checking_health
     sleep 0.1
@@ -144,8 +143,8 @@ upgrade_core() {
         self.assertEqual(self.start(target='sing-box-1.14.0-r9.apk', id='b' * 32).returncode, 0)
         status = self.wait_terminal()
         self.assertEqual(status['operation_state'], 'failed')
-        self.assertEqual(status['automatic_rollback'], '1')
-        self.assertEqual(status['error_code'], 'upgrade_failed_rolled_back')
+        self.assertNotIn('automatic_rollback', status)
+        self.assertEqual(status['error_code'], 'upgrade_failed')
 
     def test_killed_worker_is_unknown_not_success(self):
         self.assertEqual(self.start().returncode, 0)
