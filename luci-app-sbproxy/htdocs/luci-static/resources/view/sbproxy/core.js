@@ -4,6 +4,7 @@
 
 'use strict';
 'require dom';
+'require poll';
 'require rpc';
 'require ui';
 'require view';
@@ -126,13 +127,168 @@ function resultMessage(result) {
 	return _('Unknown error.');
 }
 
+const resources = [
+	{ type: 'geoip_cn', name: _('China IP rules (IPv4 and IPv6)') },
+	{ type: 'geosite_cn', name: _('China domain rule set') },
+	{ type: 'dashboard', name: _('sing-box dashboard') },
+	{ type: 'yacd', name: _('Yacd-meta') },
+	{ type: 'metacubexd', name: _('MetaCubeXD') }
+];
+
+const callResStatus = rpc.declare({
+	object: 'luci.sbproxy',
+	method: 'resources_get',
+	expect: { '': {} }
+});
+
+const callResUpdate = rpc.declare({
+	object: 'luci.sbproxy',
+	method: 'resources_update',
+	params: [ 'target' ],
+	expect: { '': {} }
+});
+
+// Rule sets and dashboards are versioned independently of the plugin and core.
+function resourceSection(initial) {
+	const status = E('p', { 'role': 'status' });
+	const table = E('table', { 'class': 'table' }, [
+		E('tr', { 'class': 'tr table-titles' }, [
+			E('th', { 'class': 'th' }, _('Name')),
+			E('th', { 'class': 'th' }, _('Version')),
+			E('th', { 'class': 'th' }, _('Source')),
+			E('th', { 'class': 'th' }, _('Action'))
+		])
+	]);
+	const buttons = [];
+	const versions = {};
+	let operation = null;
+	let submitting = false;
+	let generation = 0;
+	let submissionFailed = false;
+
+	function nameFor(target) {
+		return resources.find((resource) => resource.type === target)?.name || _('All resources');
+	}
+
+	function showStatus() {
+		buttons.forEach((button) => { button.disabled = submitting || !!operation?.running; });
+		let message = '';
+		if (submissionFailed) {
+			message = _('Could not start the resource update.');
+		} else if (operation) {
+			if (operation.running)
+				message = _('Updating…');
+			else if (operation.interrupted)
+				message = _('The update was interrupted.');
+			else if (operation.apply_failed)
+				message = _('Resources were updated, but SBProxy failed to reload. Check the log for details.');
+			else
+				message = [
+					_('Successfully updated.'),
+					_('Update failed.'),
+					_('Update already in progress.'),
+					_('Already at the latest version.'),
+					_('Some resources failed to update. Check the log for details.')
+				][operation.status] || _('Unknown error.');
+			message = '%s — %s'.format(nameFor(operation.target), message);
+			if (operation.target === 'all' && operation.failed?.length)
+				message += ' ' + _('Failed resources: %s').format(operation.failed.map(nameFor).join(', '));
+		}
+		if (status.textContent !== message)
+			dom.content(status, message);
+	}
+
+	function showResources(result) {
+		if (!result.resources)
+			return;
+		result.resources.forEach(({ type, version }) => {
+			const element = versions[type];
+			if (element) {
+				element.style.color = version ? 'green' : 'red';
+				dom.content(element, version || '-');
+			}
+		});
+		operation = result.operation;
+		if (operation?.running)
+			submissionFailed = false;
+		showStatus();
+	}
+
+	async function refresh() {
+		if (submitting)
+			return;
+		const currentGeneration = ++generation;
+		const result = await L.resolveDefault(callResStatus(), {});
+		if (currentGeneration === generation)
+			showResources(result);
+	}
+
+	async function update(target) {
+		if (submitting || operation?.running)
+			return;
+		submitting = true;
+		submissionFailed = false;
+		generation++;
+		showStatus();
+		const result = await L.resolveDefault(callResUpdate(target), {});
+		submitting = false;
+		submissionFailed = !result.accepted && !result.operation?.running;
+		operation = result.operation;
+		showStatus();
+		return refresh();
+	}
+
+	function updateButton(target, label) {
+		const button = E('button', {
+			'type': 'button',
+			'class': 'btn cbi-button cbi-button-action',
+			'click': () => update(target)
+		}, [ label ]);
+		buttons.push(button);
+		return button;
+	}
+
+	const sources = {};
+	(initial.resources || []).forEach(({ type, source }) => { sources[type] = source; });
+	cbi_update_table(table, resources.map(({ type, name }) => {
+		const source = sources[type];
+		const version = E('span', {}, '-');
+		versions[type] = version;
+		return [
+			name,
+			version,
+			source ? E('a', {
+				'href': source,
+				'target': '_blank',
+				'rel': 'noreferrer noopener',
+				'style': 'word-break:break-all'
+			}, source) : '-',
+			updateButton(type, _('Update'))
+		];
+	}));
+	const updateAll = updateButton('all', _('Update all'));
+	updateAll.style.marginLeft = '4px';
+	showResources(initial);
+	poll.add(refresh);
+
+	return E('div', { 'class': 'cbi-section' }, [
+		E('h3', { 'style': 'align-items:center;display:flex' }, [
+			_('Resource Management'),
+			updateAll
+		]),
+		status,
+		table
+	]);
+}
+
 return view.extend({
 	load() {
 		return Promise.all([ L.resolveDefault(callCoreStatus(), {
 			code: 1,
 			manager_supported: false,
 			error: _('Unable to read core status.')
-		}), L.resolveDefault(callCoreOperationStatus(''), {}) ]);
+		}), L.resolveDefault(callCoreOperationStatus(''), {}),
+		L.resolveDefault(callResStatus(), {}) ]);
 	},
 
 	showFailure(title, result) {
@@ -276,7 +432,7 @@ return view.extend({
 	},
 
 	render(data) {
-		const [ status, lastOperation ] = data;
+		const [ status, lastOperation, resourceStatus ] = data;
 		this.operationBusy = status.busy || lastOperation.operation_state === 'running';
 		this.operationInfo = E('div', { 'class': 'cbi-section-descr' });
 		const cards = [];
@@ -367,7 +523,8 @@ return view.extend({
 			E('p', { 'class': 'cbi-map-descr' }, [ _('Update SBProxy and its core without updating the router firmware.') ]),
 			status.manager_supported === false ? E('p', { 'class': 'alert-message error' }, [
 				_('Online updates are not available on this architecture.') ]) : '',
-			pluginCard, coreCard, this.operationInfo
+			pluginCard, coreCard, this.operationInfo,
+			resourceSection(resourceStatus || {})
 		]);
 	},
 
