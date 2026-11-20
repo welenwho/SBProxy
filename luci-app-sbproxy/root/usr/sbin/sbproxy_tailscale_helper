@@ -32,18 +32,18 @@ fail() {
 }
 
 load_settings() {
-	local cfg="tailscale" dashboard_enabled dashboard_port dashboard_path routing_mode
+	local cfg="tailscale"
 
 	config_load sbproxy
 	config_get_bool ENABLED "$cfg" enabled 0
 	config_get STATE_DIRECTORY "$cfg" state_directory /etc/sbproxy/tailscale
 	config_get INTERFACE_NAME "$cfg" system_interface_name tailscale0
 	config_get DNS_PORT infra dns_port 5333
+	# generate_client.uc always adds the loopback gRPC API service
+	# (api-internal, no secret) on this port while Tailscale is enabled. Never
+	# use the dashboard port: it serves the HTTP Clash API for Yacd/MetaCubeXD,
+	# and the sing-box dashboard listener may require TLS.
 	config_get API_PORT infra tailscale_api_port
-	config_get dashboard_port config dashboard_port
-	config_get_bool dashboard_enabled config dashboard_enabled 0
-	config_get routing_mode config routing_mode
-	[ "$routing_mode" != "disabled" ] || dashboard_enabled=0
 	config_get_bool MAGIC_DNS "$cfg" magic_dns 1
 	config_get_bool ACCEPT_ROUTES "$cfg" accept_routes 0
 	config_get SUBNET_ROUTES "$cfg" subnet_routes
@@ -51,10 +51,7 @@ load_settings() {
 	config_get_bool DISABLE_SNAT "$cfg" disable_snat_subnet_routes 0
 	config_get_bool ADVERTISE_EXIT_NODE "$cfg" advertise_exit_node 0
 	config_get EXIT_NODE "$cfg" exit_node
-	config_get API_SECRET config dashboard_secret
 
-	dashboard_path="/etc/sbproxy/dashboard/index.html"
-	[ "$dashboard_enabled" = "1" ] && [ -s "$dashboard_path" ] && API_PORT="$dashboard_port"
 	[ "$ACCEPT_ROUTES" = "1" ] || SUBNET_ROUTES=''
 	API_URL="http://127.0.0.1:$API_PORT"
 }
@@ -73,11 +70,15 @@ validate_settings() {
 }
 
 api() {
-	BOX_API_URL="$API_URL" BOX_API_SECRET="$API_SECRET" "$SING_BOX_BIN" api "$@"
+	BOX_API_URL="$API_URL" "$SING_BOX_BIN" api "$@"
 }
 
 status_output() {
 	api tailscale status 2>"/dev/null"
+}
+
+status_error() {
+	api tailscale status 2>&1 >"/dev/null" | head -n 1
 }
 
 uci_get() {
@@ -711,10 +712,15 @@ watch_backend() {
 	# The embedded endpoint may need a short moment to create tailscale0 and
 	# install its policy rules. Retry at 1s intervals so switching to Tailscale
 	# does not leave LuCI waiting for the old 2s polling cadence.
-	local state url last_url='' delay=1 result integrated=0 waiting=0
+	local state url last_url='' delay=1 result integrated=0 waiting=0 unreadable=0 error
 
 	while [ "$ENABLED" = "1" ] && [ ! -e "$STOP_FILE" ]; do
 		state="$(backend_state)"
+		if [ -n "$state" ]; then
+			[ "$unreadable" -lt 10 ] ||
+				log_info "Tailscale backend state is readable again: $state"
+			unreadable=0
+		fi
 		case "$state" in
 			Running)
 				# DirectInterface sockets are bound to the current TUN device. A
@@ -763,6 +769,19 @@ watch_backend() {
 				if [ -n "$url" ] && [ "$url" != "$last_url" ]; then
 					log_info "Waiting for authentication: $url"
 					last_url="$url"
+				fi
+				;;
+			'')
+				# The API is unreachable or reported no state. sing-box may still
+				# be starting, so report it once after ~10s instead of retrying
+				# silently forever.
+				integrated=0
+				waiting=0
+				delay=1
+				unreadable=$((unreadable + 1))
+				if [ "$unreadable" -eq 10 ]; then
+					error="$(status_error)"
+					log_error "Unable to read the Tailscale backend state from $API_URL${error:+: $error}"
 				fi
 				;;
 			*)

@@ -69,7 +69,16 @@ grep -Fq "_('Tailscale IPv4')" "$TAILSCALE"
 grep -Fq "_('Tailscale IPv6')" "$TAILSCALE"
 grep -Fq "_('Interface Management')" "$TAILSCALE"
 grep -Fq '"tailscale"' "$ACL"
-grep -Fq 'dashboard/index.html' "$HELPER"
+# The helper drives Tailscale over gRPC (sing-box api), so it must always use
+# the internal API service on tailscale_api_port. The dashboard port serves the
+# HTTP Clash API for Yacd/MetaCubeXD and may use TLS for the sing-box UI.
+grep -Fq 'config_get API_PORT infra tailscale_api_port' "$HELPER"
+if grep -Eq 'dashboard_(port|enabled|secret)|BOX_API_SECRET' "$HELPER"; then
+	echo 'Tailscale helper must not talk to the dashboard API listener' >&2
+	exit 1
+fi
+grep -B3 "tag: 'api-internal'" "$GENERATOR" | grep -Fxq 'if (tailscale_enabled)'
+grep -A3 "tag: 'api-internal'" "$GENERATOR" | grep -Fq 'listen_port: tailscale_api_port'
 grep -Fq 'firewall.sbproxy_tszone.masq 0' "$HELPER"
 grep -Fq 'delete firewall.homeproxy_forward' "$PACKAGE_ROOT/root/etc/uci-defaults/luci-sbproxy"
 grep -Fq 'delete firewall.homeproxy_input' "$PACKAGE_ROOT/root/etc/uci-defaults/luci-sbproxy"

@@ -35,11 +35,13 @@ const rpc = fs.readFileSync(new URL('root/usr/share/rpcd/ucode/luci.sbproxy', ro
 assert.match(rpc, /mode: 'disabled', proxy_enabled: false/);
 console.log('Proxy mode startup tests passed: saved nodes ignored only when off, Tailscale startup remains independent');
 
-// A saved dashboard must not redirect Tailscale control to a stopped listener.
+// The helper speaks gRPC (`sing-box api`). The dashboard port serves the HTTP
+// Clash API for Yacd/MetaCubeXD, so Tailscale control must always use the
+// internal API port, whatever the proxy mode and dashboard settings are.
 const helper = fs.readFileSync(new URL('root/usr/sbin/sbproxy_tailscale_helper', root), 'utf8');
-const loadSettings = helper.slice(helper.indexOf('load_settings() {'), helper.indexOf('\nvalidate_settings() {'))
-  .replace('dashboard_path="/etc/sbproxy/dashboard/index.html"', 'dashboard_path="$DASHBOARD_FIXTURE"');
-assert(loadSettings.includes('routing_mode'));
+const loadSettings = helper.slice(helper.indexOf('load_settings() {'), helper.indexOf('\nvalidate_settings() {'));
+assert(!/dashboard_(port|enabled|secret)/.test(loadSettings), 'helper must not read dashboard settings');
+assert(!helper.includes('BOX_API_SECRET'), 'internal API has no secret');
 for (const mode of ['disabled', 'global', 'custom', 'bypass_mainland_china']) {
   for (const enabled of ['0', '1']) {
     const result = spawnSync('sh', ['-c', `
@@ -58,11 +60,10 @@ config_get_bool() { config_get "$@"; }
 ${loadSettings}
 load_settings
 printf '%s' "$API_URL"
-`], { env: { ...process.env, MODE: mode, DASHBOARD_ENABLED: enabled,
-      DASHBOARD_FIXTURE: new URL('root/etc/sbproxy/dashboard/index.html', root).pathname }, encoding: 'utf8' });
+`], { env: { ...process.env, MODE: mode, DASHBOARD_ENABLED: enabled }, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, `http://127.0.0.1:${mode !== 'disabled' && enabled === '1' ? 19095 : 19096}`, mode);
+    assert.equal(result.stdout, 'http://127.0.0.1:19096', `${mode} dashboard=${enabled}`);
   }
 }
 assert.match(source, /\[ "\$routing_mode" != "disabled" \] \|\| dashboard_enabled=0/);
-console.log('Tailscale helper uses its internal API when proxy mode is off, even with a saved enabled dashboard');
+console.log('Tailscale helper always uses its internal gRPC API port, even with the dashboard enabled');
