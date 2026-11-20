@@ -5260,3 +5260,7 @@ msgstr ""
 #: htdocs/luci-static/resources/view/sbproxy/status.js
 msgid "Failed resources: %s"
 msgstr ""
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "This plugin version needs other packages, such as a newer sing-box core, to be installed or upgraded first. Plugin updates never change the core."
+msgstr ""

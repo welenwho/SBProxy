@@ -90,6 +90,7 @@ function operationOutcome(result, id) {
 const coreErrors = {
 	worker_unavailable: _('This firmware cannot start an isolated update worker.'),
 	plugin_downgrade: _('Select the current or a newer SBProxy version.'),
+	plugin_dependencies: _('This plugin version needs other packages, such as a newer sing-box core, to be installed or upgraded first. Plugin updates never change the core.'),
 	plugin_upgrade_rolled_back: _('The plugin update failed; the previous version and configuration were restored.'),
 	plugin_recovery_failed: _('The plugin update and automatic recovery failed. Check the update log.'),
 	health_snapshot_failed: _('Unable to capture the expected core instances.'),

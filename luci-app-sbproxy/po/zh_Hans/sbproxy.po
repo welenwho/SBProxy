@@ -5391,3 +5391,7 @@ msgstr "更新已中断。"
 #: htdocs/luci-static/resources/view/sbproxy/status.js
 msgid "Failed resources: %s"
 msgstr "更新失败的资源：%s"
+
+#: htdocs/luci-static/resources/view/sbproxy/core.js
+msgid "This plugin version needs other packages, such as a newer sing-box core, to be installed or upgraded first. Plugin updates never change the core."
+msgstr "此插件版本需要先安装或升级其他软件包（例如更新的 sing-box 核心）。插件更新不会改动核心。"
