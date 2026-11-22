@@ -16,6 +16,8 @@ const targets = [
 ];
 const states = {};
 function quote(value) { return "'" + replace(value, /'/g, "'\\''") + "'"; }
+/* The API needs the dashboard secret when Yacd or MetaCubeXD shares it. */
+const auth = plan.api_secret ? '-H ' + quote('Authorization: Bearer ' + plan.api_secret) + ' ' : '';
 function run(command, allowed) {
 	const fd = popen(command + ' 2>/dev/null');
 	if (!fd) return null;
@@ -24,7 +26,7 @@ function run(command, allowed) {
 	return status === 0 || index(allowed || [], status) >= 0 ? output : null;
 }
 function api(path, data) {
-	const command = 'curl --noproxy ' + quote('*') + ' -fsS --connect-timeout 1 --max-time 4 ' +
+	const command = 'curl --noproxy ' + quote('*') + ' -fsS --connect-timeout 1 --max-time 4 ' + auth +
 		(data ? '-X PUT -H ' + quote('Content-Type: application/json') + ' --data-binary ' + quote(sprintf('%J', data)) + ' ' : '') +
 		quote(base + path);
 	const result = run(command);
@@ -86,11 +88,21 @@ function speed(node) {
 	return size >= 65536 ? size / max(0.05, +parts[2] - +parts[1]) : null;
 }
 
+let api_failures = 0;
 while (true) {
 	const started = time();
 	let urgent = false;
 	const snapshot = api('/proxies');
-	if (!snapshot?.proxies) { sleep(5000); continue; }
+	if (!snapshot?.proxies) {
+		/* Report a lasting outage once, so a broken selector is visible in the log. */
+		if (++api_failures === 6)
+			warn(sprintf('Smart selection: Clash API at %s is unreachable; selection is paused.\n', base));
+		sleep(5000);
+		continue;
+	}
+	if (api_failures >= 6)
+		warn('Smart selection: Clash API is reachable again.\n');
+	api_failures = 0;
 	for (let group in plan.groups) {
 		const live = snapshot.proxies[group.tag];
 		if (!live) continue;

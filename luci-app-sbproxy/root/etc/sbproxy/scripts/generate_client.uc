@@ -1491,15 +1491,20 @@ if (length(smart_groups)) {
 
 /* Experimental start */
 const enable_clash_api = main_node === 'urltest' || length(smart_groups) > 0;
+/* Yacd and MetaCubeXD need the Clash API itself, so it moves to the dashboard
+ * port and requires the dashboard secret. Internal callers follow it there. */
+const clash_api_public = dashboard_enabled && dashboard_uses_clash;
+const clash_controller_port = clash_api_public ? dashboard_port : clash_api_port;
+const clash_controller_secret = clash_api_public ? dashboard_secret : null;
 const enable_cache_file = proxy_client_enabled &&
       routing_mode in ['bypass_mainland_china', 'custom'];
 if (enable_clash_api || enable_cache_file) {
 	config.experimental = {
 		clash_api: enable_clash_api ? {
-			external_controller: dashboard_enabled && dashboard_uses_clash ?
-				`0.0.0.0:${dashboard_port}` : `127.0.0.1:${clash_api_port}`,
-			external_ui: dashboard_enabled && dashboard_uses_clash ? dashboard_path : null,
-			secret: dashboard_enabled && dashboard_uses_clash ? dashboard_secret : null
+			external_controller: clash_api_public ?
+				`0.0.0.0:${clash_controller_port}` : `127.0.0.1:${clash_controller_port}`,
+			external_ui: clash_api_public ? dashboard_path : null,
+			secret: clash_controller_secret
 		} : null,
 		cache_file: enable_cache_file ? {
 			enabled: true,
@@ -1589,5 +1594,6 @@ if (!writefile(output_path, sprintf('%.J\n', removeBlankAttrs(config))))
 	exit(1);
 
 if (!writefile(output_path + '.smart.json', sprintf('%.J\n', {
-	api_port: clash_api_port, probe_port: smart_probe_port, probe_tag: smart_probe_tag, groups: smart_groups
+	api_port: clash_controller_port, api_secret: clash_controller_secret,
+	probe_port: smart_probe_port, probe_tag: smart_probe_tag, groups: smart_groups
 }))) die('Unable to write smart selection plan.');

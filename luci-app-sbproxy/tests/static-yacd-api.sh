@@ -6,7 +6,17 @@ GENERATOR="$ROOT/root/etc/sbproxy/scripts/generate_client.uc"
 SELECT="$ROOT/root/usr/libexec/sbproxy-dashboard-select"
 
 grep -Fq "dashboard_uses_clash" "$GENERATOR"
-grep -Fq 'external_ui: dashboard_enabled && dashboard_uses_clash ? dashboard_path : null' "$GENERATOR"
+grep -Fq 'const clash_api_public = dashboard_enabled && dashboard_uses_clash;' "$GENERATOR"
+grep -Fq 'external_ui: clash_api_public ? dashboard_path : null' "$GENERATOR"
+# Smart selection and the current-node query must follow the API to the
+# dashboard port and send its secret.
+grep -Fq 'api_port: clash_controller_port, api_secret: clash_controller_secret' "$GENERATOR"
+grep -Fq "'Authorization: Bearer ' + plan.api_secret" "$ROOT/root/etc/sbproxy/scripts/smart_select.uc"
+grep -Fq 'const controller = clashController();' "$ROOT/root/usr/share/rpcd/ucode/luci.sbproxy"
+if grep -n 'clash_api_port' "$ROOT/root/usr/share/rpcd/ucode/luci.sbproxy" | grep -v reserved_controller_port; then
+	printf 'rpcd must read the Clash API address from the running config\n' >&2
+	exit 1
+fi
 grep -Fq 'dashboard_enabled && !dashboard_uses_clash' "$GENERATOR"
 grep -Fq "ui === 'metacubexd'" "$ROOT/htdocs/luci-static/resources/view/sbproxy/client.js"
 grep -Fq 'data-base-url="http://127.0.0.1:9090"' "$SELECT"

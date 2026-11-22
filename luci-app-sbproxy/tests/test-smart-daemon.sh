@@ -6,10 +6,12 @@ TMP="$(mktemp -d)"
 pid=''
 trap '[ -z "$pid" ] || kill "$pid" 2>/dev/null || :; rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin"
+# With Yacd or MetaCubeXD the API is the dashboard's and needs its secret.
 cat > "$TMP/plan.json" <<'JSON'
-{"api_port":19090,"probe_port":19091,"probe_tag":"probe","log_path":"LOG_PATH","groups":[{"tag":"main-out","nodes":["low latency","high bandwidth"],"fallback":"fallback","bandwidth":true}]}
+{"api_port":19090,"api_secret":"dash'secret","probe_port":19091,"probe_tag":"probe","log_path":"LOG_PATH","groups":[{"tag":"main-out","nodes":["low latency","high bandwidth"],"fallback":"fallback","bandwidth":true}]}
 JSON
 sed -i.bak "s|LOG_PATH|$TMP/sing-box.log|" "$TMP/plan.json"
+sed 's|"api_secret":"dash.secret",||' "$TMP/plan.json" > "$TMP/no-secret.json"
 # A user session timeout is read from the log; probe traffic is ignored.
 cat > "$TMP/sing-box.log" <<'LOG'
 ERROR [1 2.0s] inbound/redirect[redirect-in]: process connection from 192.168.1.2:50000: outbound/vless[low latency]: dial tcp 192.0.2.1:443: i/o timeout
@@ -19,11 +21,15 @@ cat > "$TMP/bin/curl" <<'MOCK'
 #!/bin/sh
 url=''
 data=''
+auth=''
 for arg do
  url="$arg"
- case "$arg" in *'"name"'*) data="$arg";; esac
+ case "$arg" in *'"name"'*) data="$arg";; 'Authorization: '*) auth="$arg";; esac
 done
 [ "${MOCK_DOWN:-0}" != 1 ] || exit 7
+case "$url" in
+ http://127.0.0.1:19090/*) [ "$auth" = "Authorization: Bearer dash'secret" ] || exit 22 ;;
+esac
 case "$url" in
  */proxies) echo '{"proxies":{"main-out":{"now":"fallback"}}}' ;;
  *'/delay?'*)
@@ -66,4 +72,13 @@ kill "$pid" 2>/dev/null || :
 wait "$pid" 2>/dev/null || :
 pid=''
 [ ! -s "$TMP/switches" ]
-echo 'Smart daemon integration passed: throughput selection, session log, private probing, API outage'
+# Without the secret the dashboard API rejects every call, so nothing switches.
+PATH="$TMP/bin:$PATH" MOCK_TMP="$TMP" ucode -L "$ROOT/root/etc/sbproxy/scripts" \
+ "$ROOT/root/etc/sbproxy/scripts/smart_select.uc" "$TMP/no-secret.json" >"$TMP/no-secret-log" 2>&1 &
+pid=$!
+sleep 1
+kill "$pid" 2>/dev/null || :
+wait "$pid" 2>/dev/null || :
+pid=''
+[ ! -s "$TMP/switches" ]
+echo 'Smart daemon integration passed: throughput selection, session log, private probing, API secret, API outage'

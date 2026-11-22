@@ -42,10 +42,27 @@ render custom
 cfg set sbproxy.smart.urltest_smart=0
 cfg commit sbproxy
 render ordinary
+# Yacd moves the Clash API to the dashboard port; the selector must follow it.
+dashboard_index=/etc/sbproxy/dashboard/index.html
+created_index=''
+if [ ! -e "$dashboard_index" ]; then
+ mkdir -p "${dashboard_index%/*}"
+ echo '<html></html>' > "$dashboard_index"
+ created_index=1
+fi
+cfg set sbproxy.smart.urltest_smart=1
+cfg set sbproxy.config.dashboard_enabled=1
+cfg set sbproxy.config.dashboard_ui=yacd
+cfg set sbproxy.config.dashboard_port=19095
+cfg set sbproxy.config.dashboard_secret=dashboard-secret
+cfg commit sbproxy
+render dashboard
+[ -z "$created_index" ] || rm -f "$dashboard_index"
 ucode -L "$SCRIPTS" "$ROOT/tests/smart-score.uc"
-ucode "$ROOT/tests/check-smart-config.uc" "$TMP/main.json" "$TMP/custom.json" "$TMP/ordinary.json"
+ucode "$ROOT/tests/check-smart-config.uc" "$TMP/main.json" "$TMP/custom.json" "$TMP/ordinary.json" "$TMP/dashboard.json"
 if [ -n "${SING_BOX:-}" ]; then
  "$SING_BOX" check -c "$TMP/main.json"
  "$SING_BOX" check -c "$TMP/custom.json"
  "$SING_BOX" check -c "$TMP/ordinary.json"
+ "$SING_BOX" check -c "$TMP/dashboard.json"
 fi

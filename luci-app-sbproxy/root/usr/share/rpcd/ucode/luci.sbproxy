@@ -440,6 +440,23 @@ function resourceUpdateStatus(instance) {
 	};
 }
 
+/* Read the Clash API address from the running client config. With Yacd or
+ * MetaCubeXD it listens on the dashboard port and requires the dashboard secret. */
+function clashController() {
+	let config = null;
+	try { config = json(readfile(RUN_DIR + '/sing-box-c.json')); } catch (e) {}
+	const api = config?.experimental?.clash_api;
+	const port = int(match(api?.external_controller || '', /:([0-9]+)$/)?.[1] || 0);
+	if (port < 1 || port > 65535)
+		return null;
+	const auth = api.secret ? ' -H ' + shellQuote('Authorization: Bearer ' + api.secret) : '';
+	return {
+		curl: (path) => '/usr/bin/curl --noproxy ' + shellQuote('*') +
+			' -fsS --connect-timeout 1 --max-time 2' + auth + ' ' +
+			shellQuote(`http://127.0.0.1:${port}` + path)
+	};
+}
+
 const CONNECTION_SITES = {
 	baidu: 'https://www.baidu.com/',
 	bilibili: 'https://www.bilibili.com/',
@@ -934,14 +951,14 @@ const methods = {
 					error: null
 				};
 
-			const clash_api_port = int(uci.get('sbproxy', 'infra', 'clash_api_port'));
-			if (!clash_api_port)
+			const controller = clashController();
+			if (!controller)
 				return {
 					mode: 'urltest',
 					active: { id: 'urltest', label: 'URLTest', type: 'urltest' },
 					error: 'clash_api_unavailable'
 				};
-			const fd = popen(`/usr/bin/curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:${clash_api_port}/proxies/main-out 2>"/dev/null"`);
+			const fd = popen(controller.curl('/proxies/main-out') + ' 2>"/dev/null"');
 			if (!fd)
 				return {
 					mode: 'urltest',
@@ -967,9 +984,7 @@ const methods = {
 				try { plan = json(readfile(RUN_DIR + '/sing-box-c.json.smart.json')); } catch (e) {}
 				const group = filter(plan?.groups || [], (g) => g.tag === 'main-out')[0];
 				if (group && tag === group.fallback) {
-					const result = runCommand('/usr/bin/curl --noproxy ' + shellQuote('*') +
-						' -fsS --connect-timeout 1 --max-time 2 ' +
-						shellQuote(`http://127.0.0.1:${clash_api_port}/proxies/` + urlencode(tag)));
+					const result = runCommand(controller.curl('/proxies/' + urlencode(tag)));
 					try { tag = trim(json(result.output)?.now || tag); } catch (e) {}
 				}
 			}
