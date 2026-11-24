@@ -147,7 +147,7 @@ class UpdateScriptTests(unittest.TestCase):
             "METACUBEXD_SOURCE": "https://example.test/metacubexd.zip",
             "METACUBEXD_VERSION_URL": "https://example.test/metacubexd/commits/gh-pages.atom",
             "METACUBEXD_DASHBOARD_DIR": str(repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-metacubexd"),
-            "SINGBOX_DASHBOARD_DIR": str(repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard"),
+            "SINGBOX_DASHBOARD_DIR": str(repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-singbox"),
             "YACD_DASHBOARD_DIR": str(repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd"),
         })
         return subprocess.run(["bash", str(UPDATE)], env=env, text=True, capture_output=True)
@@ -159,7 +159,7 @@ class UpdateScriptTests(unittest.TestCase):
             bin_dir.mkdir()
             repo = base / "repo"
             resources = repo / "luci-app-sbproxy/root/etc/sbproxy/resources"
-            dashboard = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard"
+            dashboard = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-singbox"
             yacd = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd"
             metacubexd = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-metacubexd"
             resources.mkdir(parents=True)
@@ -246,7 +246,7 @@ class UpdateScriptTests(unittest.TestCase):
             bin_dir = base / "bin"
             repo = base / "repo"
             resources = repo / "luci-app-sbproxy/root/etc/sbproxy/resources"
-            dashboard = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard"
+            dashboard = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-singbox"
             yacd = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd"
             metacubexd = repo / "luci-app-sbproxy/root/etc/sbproxy/dashboard-metacubexd"
             bin_dir.mkdir()

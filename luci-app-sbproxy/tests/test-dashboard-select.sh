@@ -104,6 +104,63 @@ if command -v node >/dev/null 2>&1; then
 	node "$ROOT/tests/dashboard-login.mjs" "$TMP/dashboard-singbox/sbproxy-login.js" "$TMP/dashboard-yacd/sbproxy-login.js"
 fi
 
+# A package upgrade with a new Yacd build (seen on a router after 1.0.12):
+# apk kept the edited page, saved the packaged one as index.html.apk-new and
+# removed the assets the kept page loads. Older packages also wrote the sing-box
+# dashboard through the active link into the selected directory.
+rm -rf "$TMP/dashboard-singbox" "$TMP/dashboard-yacd" "$TMP/dashboard-metacubexd"
+write_dashboards
+S="$TMP/dashboard-singbox" Y="$TMP/dashboard-yacd" M="$TMP/dashboard-metacubexd"
+mkdir -p "$S/assets" "$Y/assets" "$M/_nuxt"
+printf 'sing-box app\n' > "$S/assets/index.js"
+printf 'shared font\n' > "$S/assets/font.woff2"
+printf '<title>sing-box dashboard</title><script type="module" crossorigin src="./assets/index.js"></script>\n' \
+	> "$S/index.html.apk-new"
+printf '20261011041500\n' > "$S/dashboard.ver"
+printf '{"name":"sing-box"}\n' > "$S/manifest.webmanifest"
+printf '<head><script type="module" crossorigin src="./assets/index-old.js"></script></head>\n<body><div id="app" data-base-url="http://127.0.0.1:9090"></div><script src="sbproxy-login.js"></script></body>\n' \
+	> "$Y/index.html"
+printf '<head><script type="module" crossorigin src="./assets/index-new.js"></script></head>\n<body><div id="app" data-base-url="http://127.0.0.1:9090"></div></body>\n' \
+	> "$Y/index.html.apk-new"
+printf 'e([{"revision":"4444","url":"assets/index-new.js"},{"revision":"0123456789abcdef0123456789abcdef","url":"index.html"}]);\n' \
+	> "$Y/sw.js.apk-new"
+printf 'yacd app loads font.woff2\n' > "$Y/assets/index-new.js"
+printf 'same build, other bytes\n' > "$Y/assets/index-new.js.apk-new"
+cp "$S/assets/index.js" "$S/assets/font.woff2" "$Y/assets/"
+cp "$S/dashboard.ver" "$Y/dashboard.ver.apk-new"
+cp "$S/manifest.webmanifest" "$Y/manifest.webmanifest.apk-new"
+mkdir -p "$M/assets"
+cp "$S/assets/index.js" "$M/assets/"
+printf 'packaged config\n' > "$M/config.js.apk-new"
+printf "config sbproxy 'config'\n\toption dashboard_ui 'yacd'\n" > "$TMP/etc/sbproxy"
+run_select
+grep -Fq 'src="./assets/index-new.js"' "$Y/index.html"
+grep -Fq '<div id="app" data-base-url="http://127.0.0.1:9090"></div><script src="sbproxy-login.js"></script>' "$Y/index.html"
+grep -Fq '{"revision":"4444","url":"assets/index-new.js"}' "$Y/sw.js"
+grep -Fq "\"revision\":\"$(md5 "$Y/index.html")\",\"url\":\"index.html\"" "$Y/sw.js"
+test -z "$(find "$TMP/dashboard-singbox" "$Y" "$M" -name '*.apk-new')"
+# Stray sing-box files go; a file Yacd itself loads stays.
+test ! -e "$Y/assets/index.js"
+test -f "$Y/assets/font.woff2"
+test -f "$Y/assets/index-new.js"
+test ! -e "$M/assets"
+# The sing-box page still works, so its packaged copy is not swapped in.
+grep -Fq '<script src="sbproxy-login.js"></script><script type="module" crossorigin src="./assets/index.js">' "$S/index.html"
+check_precache_singbox() {
+	grep -Fq "url:\"index.html\",revision:\"$(md5 "$S/index.html")\"" "$S/sw.js"
+}
+check_precache_singbox
+# A page from a newer resource update is complete and stays, even with a
+# packaged page beside it.
+printf '<head><script type="module" crossorigin src="./assets/index-newer.js"></script></head>\n<body><div id="app" data-base-url="http://127.0.0.1:9090"></div></body>\n' \
+	> "$Y/index.html"
+printf 'newer\n' > "$Y/assets/index-newer.js"
+printf '<head><script type="module" crossorigin src="./assets/index-new.js"></script></head><div id="app" data-base-url="x"></div>\n' \
+	> "$Y/index.html.apk-new"
+run_select
+grep -Fq 'src="./assets/index-newer.js"' "$Y/index.html"
+test ! -e "$Y/index.html.apk-new"
+
 printf "config sbproxy 'config'\n\toption dashboard_ui 'yacd'\n" > "$TMP/etc/sbproxy"
 rm "$TMP/dashboard"
 mkdir -p "$TMP/legacy"

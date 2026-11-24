@@ -5,7 +5,7 @@ set -u
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}"
 RESOURCES_DIR="$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/resources"
-DASHBOARD_DIR="${SINGBOX_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard}"
+DASHBOARD_DIR="${SINGBOX_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard-singbox}"
 YACD_DIR="${YACD_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard-yacd}"
 METACUBEXD_DIR="${METACUBEXD_DASHBOARD_DIR:-$REPO_ROOT/luci-app-sbproxy/root/etc/sbproxy/dashboard-metacubexd}"
 

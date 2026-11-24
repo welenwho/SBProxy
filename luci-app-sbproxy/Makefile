@@ -23,7 +23,7 @@ LUCI_DEPENDS:= \
 LUCI_EXTRA_DEPENDS:=sing-box (>=1.14.0)
 
 PKG_NAME:=luci-app-sbproxy
-PKG_VERSION:=1.0.12
+PKG_VERSION:=1.0.13
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 
@@ -36,6 +36,16 @@ define Package/luci-app-sbproxy/conffiles
 /etc/sbproxy/tailscale/tailscaled.state
 /etc/sbproxy/tailscale/tailscaled.log.conf
 /etc/sbproxy/tailscale/magicdns_target
+endef
+
+# /etc/sbproxy/dashboard is a link to the selected dashboard. Up to 1.0.12 the
+# package also shipped the sing-box dashboard at that path, so an upgrade wrote
+# it through the link into Yacd or MetaCubeXD. Drop the link before unpacking;
+# sbproxy-dashboard-select recreates it after installation.
+define Package/luci-app-sbproxy/preinst
+#!/bin/sh
+[ ! -L "$${IPKG_INSTROOT}/etc/sbproxy/dashboard" ] || rm -f "$${IPKG_INSTROOT}/etc/sbproxy/dashboard"
+exit 0
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk

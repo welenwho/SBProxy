@@ -104,6 +104,82 @@ refresh_precache() {
 		-e "s|url:\`./\`,revision:\`[0-9a-f]*\`|url:\`./\`,revision:\`$sum\`|"
 }
 
+# Asset paths a page loads, relative to its directory.
+page_assets() {
+	grep -oE '(src|href)="\./(assets|_nuxt)/[^"]+"' "$1" | sed -e 's/^[a-z]*="\.\///' -e 's/"$//'
+}
+
+page_complete() {
+	[ -s "$2" ] || return 1
+	for asset in $(page_assets "$2"); do
+		[ -f "$1/$asset" ] || return 1
+	done
+	return 0
+}
+
+# Remove what package upgrades left behind in a dashboard directory.
+settle_upgrade() {
+	dir="$1"
+	# apk keeps the edited index.html and puts the packaged one beside it as
+	# index.html.apk-new, while it removes the assets the old page loads. Use
+	# the packaged page once the kept one is incomplete; it is edited again
+	# below. A page whose assets are all present, such as one from a newer
+	# resource update, is kept.
+	packaged="$dir/index.html.apk-new"
+	if [ -f "$packaged" ] && ! page_complete "$dir" "$dir/index.html" &&
+	   page_complete "$dir" "$packaged" && page_is_kind "$dir" "$packaged"; then
+		main="$(page_assets "$packaged" | grep -m 1 '\.js$')"
+		mv -f "$packaged" "$dir/index.html"
+		# The service worker must precache the same assets as the page.
+		if [ -f "$dir/sw.js.apk-new" ] && [ -n "$main" ] && grep -qF "$main" "$dir/sw.js.apk-new"; then
+			mv -f "$dir/sw.js.apk-new" "$dir/sw.js"
+		fi
+	fi
+	# Unused packaged copies of files this script rewrites, and of hashed
+	# assets whose kept file has the same name and therefore the same build.
+	rm -f "$dir/index.html.apk-new" "$dir/sw.js.apk-new" "$dir/config.js.apk-new"
+	for file in "$dir"/assets/*.apk-new "$dir"/_nuxt/*.apk-new; do
+		[ -f "${file%.apk-new}" ] && rm -f "$file"
+	done
+	[ "$dir" != "$SINGBOX_DIR" ] && remove_singbox_copies "$dir"
+	return 0
+}
+
+page_is_kind() {
+	case "$1" in
+	"$SINGBOX_DIR") grep -q 'sing-box' "$2" && ! grep -q 'data-base-url' "$2" ;;
+	"$YACD_DIR") grep -q 'data-base-url' "$2" ;;
+	*) return 1 ;;
+	esac
+}
+
+# Up to 1.0.12 the package also installed the sing-box dashboard at the active
+# path, so upgrades wrote it through the link into Yacd or MetaCubeXD. Remove
+# those copies: files identical to the sing-box dashboard's that nothing else
+# in the directory refers to.
+remove_singbox_copies() {
+	dir="$1"
+	[ -d "$SINGBOX_DIR" ] || return 0
+	for file in "$dir"/*.apk-new "$dir"/.*.apk-new; do
+		[ -f "$file" ] || continue
+		name="${file##*/}"
+		cmp -s "$file" "$SINGBOX_DIR/${name%.apk-new}" && rm -f "$file"
+	done
+	[ -d "$dir/assets" ] || return 0
+	copies="$(mktemp)" || return 0
+	for file in "$dir"/assets/*; do
+		[ -f "$file" ] && cmp -s "$file" "$SINGBOX_DIR/assets/${file##*/}" && printf '%s\n' "$file" >> "$copies"
+	done
+	while read -r file; do
+		# Content-hashed names are only shared by identical files.
+		grep -rlF -- "${file##*/}" "$dir" 2>/dev/null | grep -vxF -f "$copies" | grep -q . ||
+			rm -f "$file"
+	done < "$copies"
+	rm -f "$copies"
+	rmdir "$dir/assets" 2>/dev/null
+	return 0
+}
+
 # The sing-box dashboard has no URL login. LuCI opens it with the secret in the
 # fragment, which browsers never send to the server. Save it in the dashboard's
 # own server list, then drop it from the address bar.
@@ -184,6 +260,9 @@ EOF
 # Prepare every installed copy so switching dashboards needs no extra step and
 # no old copy keeps a secret.
 status=0
+for dir in "$SINGBOX_DIR" "$YACD_DIR" "$METACUBEXD_DIR"; do
+	[ -d "$dir" ] && settle_upgrade "$dir"
+done
 if [ -s "$SINGBOX_DIR/index.html" ]; then
 	prepare_singbox "$SINGBOX_DIR" || status=1
 fi

@@ -31,4 +31,14 @@ grep -Fq 'hostname: host' "$ROOT/htdocs/luci-static/resources/view/sbproxy/clien
 grep -Fq "'/ui/#/setup?'" "$ROOT/htdocs/luci-static/resources/view/sbproxy/client.js"
 grep -Fq "'/dashboard/#sbproxy-secret='" "$ROOT/htdocs/luci-static/resources/view/sbproxy/client.js"
 grep -Fq 'generate_client.uc.apk-new' "$ROOT/root/etc/uci-defaults/luci-sbproxy"
+# The active path is a link to the selected dashboard. The package must not
+# install files there, or an upgrade writes them into the selected dashboard.
+if [ -e "$ROOT/root/etc/sbproxy/dashboard" ]; then
+	printf 'the package must not ship files at the active dashboard link\n' >&2
+	exit 1
+fi
+test -s "$ROOT/root/etc/sbproxy/dashboard-singbox/index.html"
+grep -Fq 'define Package/luci-app-sbproxy/preinst' "$ROOT/Makefile"
+grep -Fq '[ ! -L "$${IPKG_INSTROOT}/etc/sbproxy/dashboard" ]' "$ROOT/Makefile"
+grep -Fq 'settle_upgrade "$dir"' "$SELECT"
 printf 'Clash dashboards use the Clash API on the dashboard port\n'
