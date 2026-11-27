@@ -2022,7 +2022,7 @@ return view.extend({
 
 		o = s.taboption('advanced', form.Value, 'memory_guard_limit', _('Memory limit per process'),
 			_('Soft memory limit in MiB for each sing-box process. The guard acts before this limit is reached.'));
-		o.default = '256';
+		o.default = features?.memory_guard_default_limit || uci.get('sbproxy', 'config', 'memory_guard_limit');
 		o.datatype = 'range(32,4096)';
 		o.depends('memory_guard_enabled', '1');
 		o.rmempty = false;

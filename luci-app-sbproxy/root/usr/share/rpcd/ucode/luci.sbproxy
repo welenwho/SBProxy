@@ -13,7 +13,7 @@ import { urlencode } from 'luci.http';
 import { connect } from 'ubus';
 
 import {
-	SB_DIR, isBinary, isEmpty,
+	SB_DIR, defaultMemoryGuardLimit, isBinary, isEmpty,
 	RUN_DIR, parseDnsServerAddress, removeBlankAttrs, renderEndpoint, renderOutbound,
 	renderNodeDomainResolver, resolveNodeDialFields, shellQuote
 } from '/etc/sbproxy/scripts/sbproxy.uc';
@@ -1462,6 +1462,7 @@ const methods = {
 			}
 
 			features.sbp_has_tcp_brutal = hasKernelModule('brutal.ko');
+			features.memory_guard_default_limit = defaultMemoryGuardLimit();
 
 			return features;
 		}

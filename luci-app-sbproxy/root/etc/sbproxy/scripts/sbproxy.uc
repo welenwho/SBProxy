@@ -4,7 +4,7 @@
  * Copyright (C) 2023 ImmortalWrt.org
  */
 
-import { popen } from 'fs';
+import { glob, popen, readfile } from 'fs';
 import { urldecode_params } from 'luci.http';
 
 /* Global variables start */
@@ -77,6 +77,43 @@ export function wGET(url, ua, proxyUrl) {
 		return null;
 
 	return trim(output);
+};
+
+export function defaultMemoryGuardLimit() {
+	const deviceTree = '/sys/firmware/devicetree/base';
+	function readCells(data, offset, count) {
+		let value = 0;
+		for (let i = offset; i < offset + count * 4; i++)
+			value = value * 256 + ord(data, i);
+		return value;
+	}
+	const addressCells = readfile(deviceTree + '/#address-cells');
+	const sizeCells = readfile(deviceTree + '/#size-cells');
+	const addressCount = length(addressCells) === 4 ? readCells(addressCells, 0, 1) : 0;
+	const sizeCount = length(sizeCells) === 4 ? readCells(sizeCells, 0, 1) : 0;
+	let total = 0;
+	if (addressCount in [1, 2] && sizeCount in [1, 2]) {
+		const stride = (addressCount + sizeCount) * 4;
+		for (let node in glob(deviceTree + '/memory*')) {
+			if (!match(node, /\/memory(@[^/]+)?$/))
+				continue;
+			const status = trim(readfile(node + '/status') || '', '\x00');
+			if (status && !(status in ['okay', 'ok']))
+				continue;
+			const reg = readfile(node + '/reg');
+			if (length(reg) % stride !== 0)
+				continue;
+			for (let i = addressCount * 4; i < length(reg); i += stride)
+				total += readCells(reg, i, sizeCount);
+		}
+	}
+	if (total > 0)
+		return total === 512 * 1024 * 1024 ? '192' : '256';
+
+	/* MemTotal excludes reserved RAM. Use the 512 MiB class when physical data is unavailable. */
+	const meminfo = match(readfile('/proc/meminfo') || '', /^MemTotal:[ \t]+([0-9]+)/);
+	const usableKiB = meminfo ? int(meminfo[1]) : 0;
+	return usableKiB > 256 * 1024 && usableKiB <= 512 * 1024 ? '192' : '256';
 };
 /* Utilities end */
 

@@ -1490,10 +1490,11 @@ if (length(smart_groups)) {
 /* Routing rules end */
 
 /* Experimental start */
-const enable_clash_api = main_node === 'urltest' || length(smart_groups) > 0;
 /* Yacd and MetaCubeXD need the Clash API itself, so it moves to the dashboard
  * port and requires the dashboard secret. Internal callers follow it there. */
-const clash_api_public = dashboard_enabled && dashboard_uses_clash;
+const clash_api_public = dashboard_enabled && dashboard_uses_clash && !isEmpty(dashboard_secret);
+const enable_clash_api = clash_api_public || main_node === 'urltest' ||
+      length(smart_groups) > 0;
 const clash_controller_port = clash_api_public ? dashboard_port : clash_api_port;
 const clash_controller_secret = clash_api_public ? dashboard_secret : null;
 const enable_cache_file = proxy_client_enabled &&

@@ -57,9 +57,32 @@ cfg set sbproxy.config.dashboard_port=19095
 cfg set sbproxy.config.dashboard_secret=dashboard-secret
 cfg commit sbproxy
 render dashboard
+cfg set sbproxy.fixed=routing_node
+cfg set sbproxy.fixed.enabled=1
+cfg set sbproxy.fixed.node=a
+cfg set sbproxy.routing.default_outbound=fixed
+cfg delete sbproxy.smart
+cfg commit sbproxy
+render yacd-fixed
+cfg set sbproxy.config.dashboard_ui=metacubexd
+cfg commit sbproxy
+render metacubexd-fixed
+cfg set sbproxy.config.dashboard_ui=singbox
+cfg commit sbproxy
+render native-fixed
+cfg set sbproxy.config.dashboard_ui=yacd
+cfg set sbproxy.config.dashboard_secret=''
+cfg commit sbproxy
+render unconfigured-secret
+cfg set sbproxy.config.dashboard_secret=dashboard-secret
+cfg set sbproxy.config.dashboard_enabled=0
+cfg commit sbproxy
+render dashboard-off
 [ -z "$created_index" ] || rm -f "$dashboard_index"
 ucode -L "$SCRIPTS" "$ROOT/tests/smart-score.uc"
-ucode "$ROOT/tests/check-smart-config.uc" "$TMP/main.json" "$TMP/custom.json" "$TMP/ordinary.json" "$TMP/dashboard.json"
+ucode "$ROOT/tests/check-smart-config.uc" "$TMP/main.json" "$TMP/custom.json" "$TMP/ordinary.json" \
+ "$TMP/dashboard.json" "$TMP/yacd-fixed.json" "$TMP/metacubexd-fixed.json" "$TMP/native-fixed.json" \
+ "$TMP/unconfigured-secret.json" "$TMP/dashboard-off.json"
 if [ -n "${SING_BOX:-}" ]; then
  "$SING_BOX" check -c "$TMP/main.json"
  "$SING_BOX" check -c "$TMP/custom.json"

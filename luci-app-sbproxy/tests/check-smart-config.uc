@@ -2,6 +2,22 @@ import { readfile } from 'fs';
 function assert(ok, message) { if (!ok) die(message); }
 for (let file in ARGV) {
  const c = json(readfile(file)), plan = json(readfile(file + '.smart.json'));
+ const fixed = match(file, /\/(yacd-fixed|metacubexd-fixed|native-fixed|unconfigured-secret|dashboard-off)\.json$/);
+ if (fixed) {
+  assert(length(plan.groups) === 0, fixed[1] + ': no smart selection group');
+  const clash = c.experimental?.clash_api;
+  const native = filter(c.services || [], (s) => s.type === 'api' && s.dashboard?.enabled);
+  if (fixed[1] in ['yacd-fixed', 'metacubexd-fixed']) {
+   assert(clash?.external_controller === '0.0.0.0:19095', fixed[1] + ': dashboard port');
+   assert(clash.secret === 'dashboard-secret', fixed[1] + ': dashboard authentication');
+   assert(clash.external_ui === '/etc/sbproxy/dashboard', fixed[1] + ': dashboard web files');
+   assert(length(native) === 0, fixed[1] + ': no native dashboard');
+  } else {
+   assert(!clash, fixed[1] + ': no Clash API');
+   assert(length(native) === (fixed[1] === 'native-fixed' ? 1 : 0), fixed[1] + ': native dashboard state');
+  }
+  continue;
+ }
  const ordinary = index(file, 'ordinary') >= 0;
  assert(length(plan.groups) === (ordinary ? 0 : 1), 'Plan group count');
  if (ordinary) {

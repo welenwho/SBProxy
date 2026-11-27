@@ -6,7 +6,7 @@ GENERATOR="$ROOT/root/etc/sbproxy/scripts/generate_client.uc"
 SELECT="$ROOT/root/usr/libexec/sbproxy-dashboard-select"
 
 grep -Fq "dashboard_uses_clash" "$GENERATOR"
-grep -Fq 'const clash_api_public = dashboard_enabled && dashboard_uses_clash;' "$GENERATOR"
+grep -Fq 'const clash_api_public = dashboard_enabled && dashboard_uses_clash && !isEmpty(dashboard_secret);' "$GENERATOR"
 grep -Fq 'external_ui: clash_api_public ? dashboard_path : null' "$GENERATOR"
 # Smart selection and the current-node query must follow the API to the
 # dashboard port and send its secret.

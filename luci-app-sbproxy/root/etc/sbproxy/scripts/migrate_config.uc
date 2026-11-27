@@ -9,7 +9,7 @@
 
 import { cursor } from 'uci';
 import {
-	isEmpty, normalizeList, reconcileUrltestNodes, synchronizeNodeLabels
+	defaultMemoryGuardLimit, isEmpty, normalizeList, reconcileUrltestNodes, synchronizeNodeLabels
 } from 'sbproxy';
 
 const uciConfigDir = getenv('SBPROXY_UCI_CONFIG_DIR');
@@ -269,7 +269,7 @@ setDefault('config', 'dashboard_allow_tailscale', '0');
 setDefault('config', 'dashboard_tls_tailscale', '0');
 setDefault('config', 'dashboard_tls_name', '');
 setDefault('config', 'memory_guard_enabled', '0');
-setDefault('config', 'memory_guard_limit', '256');
+setDefault('config', 'memory_guard_limit', defaultMemoryGuardLimit());
 setDefault('config', 'memory_guard_safety_margin', '32');
 migrateSectionOption('dns', 'disable_cache', 'config', 'dns_disable_cache');
 migrateSectionOption('dns', 'disable_cache_expire', 'config', 'dns_disable_cache_expire');
